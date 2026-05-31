@@ -417,7 +417,6 @@ function TagInput({
         {trimmedInput ? (
           <button
             type="button"
-            onPointerDown={(event) => event.preventDefault()}
             onClick={() => {
               addTag(trimmedInput);
               inputRef.current?.focus();
@@ -442,7 +441,6 @@ function TagInput({
                 <li key={`existing-${option.tag.id}`}>
                   <button
                     type="button"
-                    onPointerDown={(event) => event.preventDefault()}
                     onClick={() => {
                       addTag(option.tag.displayName);
                       inputRef.current?.focus();
@@ -461,7 +459,6 @@ function TagInput({
               <li key="create-new">
                 <button
                   type="button"
-                  onPointerDown={(event) => event.preventDefault()}
                   onClick={() => {
                     addTag(option.label);
                     inputRef.current?.focus();

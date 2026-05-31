@@ -2,46 +2,129 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 
 type NavLink = {
   href: "/journal" | "/chat" | "/people" | "/aliases";
   label: string;
+  icon: ReactNode;
 };
 
+function Icon({ children }: { children: ReactNode }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="h-4 w-4"
+      aria-hidden
+    >
+      {children}
+    </svg>
+  );
+}
+
 const navLinks: NavLink[] = [
-  { href: "/journal", label: "Journal" },
-  { href: "/chat", label: "Chat" },
-  { href: "/people", label: "People" },
-  { href: "/aliases", label: "Aliases" }
+  {
+    href: "/journal",
+    label: "Journal",
+    icon: (
+      <Icon>
+        <path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" />
+        <path d="M5 17a3 3 0 0 1 3-3h11" />
+        <path d="M9 8h6M9 12h6" />
+      </Icon>
+    )
+  },
+  {
+    href: "/chat",
+    label: "Chat",
+    icon: (
+      <Icon>
+        <path d="M21 12a8 8 0 1 1-3.2-6.4L21 4l-1.4 3.2A8 8 0 0 1 21 12z" />
+        <path d="M8 11h.01M12 11h.01M16 11h.01" />
+      </Icon>
+    )
+  },
+  {
+    href: "/people",
+    label: "People",
+    icon: (
+      <Icon>
+        <circle cx="9" cy="8" r="3.2" />
+        <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
+        <circle cx="17" cy="9" r="2.5" />
+        <path d="M16 14c2.8 0 5 2.2 5 5" />
+      </Icon>
+    )
+  },
+  {
+    href: "/aliases",
+    label: "Aliases",
+    icon: (
+      <Icon>
+        <path d="M4 7h12" />
+        <path d="M4 12h8" />
+        <path d="M4 17h12" />
+        <path d="m18 9 3 3-3 3" />
+      </Icon>
+    )
+  }
 ];
 
 function getLinkClass(pathname: string, href: string) {
   const isActive = pathname === href;
 
   return isActive
-    ? "rounded-full bg-indigo-500/15 px-4 py-2 text-indigo-300 ring-1 ring-inset ring-indigo-400/40 shadow-[0_0_18px_-6px_rgba(129,140,248,0.6)]"
-    : "rounded-full px-4 py-2 text-sand-700 hover:bg-sand-100 hover:text-sand-900";
+    ? "inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-4 py-2 text-indigo-300 ring-1 ring-inset ring-indigo-400/40 shadow-[0_0_18px_-6px_rgba(129,140,248,0.6)]"
+    : "inline-flex items-center gap-2 rounded-full px-4 py-2 text-sand-700 hover:bg-sand-100 hover:text-sand-900";
 }
 
 function getMobileLinkClass(pathname: string, href: string) {
   const isActive = pathname === href;
 
   return isActive
-    ? "block rounded-2xl bg-indigo-500/15 px-4 py-3 text-indigo-300 ring-1 ring-inset ring-indigo-400/40"
-    : "block rounded-2xl px-4 py-3 text-sand-700 hover:bg-sand-100 hover:text-sand-900";
+    ? "flex items-center gap-3 rounded-2xl bg-indigo-500/15 px-4 py-3 text-indigo-300 ring-1 ring-inset ring-indigo-400/40"
+    : "flex items-center gap-3 rounded-2xl px-4 py-3 text-sand-700 hover:bg-sand-100 hover:text-sand-900";
 }
 
 export function TopNav() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const headerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     setIsOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target as Node | null;
+      if (target && headerRef.current && !headerRef.current.contains(target)) {
+        setIsOpen(false);
+      }
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
+
   return (
-    <header className="relative z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
+    <header ref={headerRef} className="relative z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <button
           type="button"
@@ -79,6 +162,7 @@ export function TopNav() {
         <nav className="hidden items-center gap-3 text-sm font-medium text-sand-700 sm:flex">
           {navLinks.map((link) => (
             <Link key={link.href} href={link.href} className={getLinkClass(pathname, link.href)}>
+              {link.icon}
               {link.label}
             </Link>
           ))}
@@ -95,11 +179,12 @@ export function TopNav() {
       </div>
 
       {isOpen ? (
-        <nav className="absolute inset-x-0 top-full z-40 border-b border-sand-200/80 bg-white px-4 py-3 shadow-lg shadow-sand-900/5 sm:hidden">
+        <nav className="absolute inset-x-3 top-full z-40 mt-2 rounded-2xl border-2 border-sand-400 bg-white px-4 py-3 shadow-xl shadow-sand-900/20 ring-1 ring-sand-900/5 sm:hidden">
           <ul className="flex flex-col gap-1 text-sm font-medium">
             {navLinks.map((link) => (
               <li key={link.href}>
                 <Link href={link.href} className={getMobileLinkClass(pathname, link.href)}>
+                  {link.icon}
                   {link.label}
                 </Link>
               </li>

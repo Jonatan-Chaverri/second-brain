@@ -190,6 +190,7 @@ type ChatAnswerInput = {
     ideas: string[];
     experiences: string[];
     workKnowledge: string[];
+    similarity?: number;
   }>;
 };
 
@@ -244,30 +245,46 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
     throw new OpenAiProcessingError("Chat message was empty.");
   }
 
+  // Token-saving rules:
+  // - Only include rawText for highly relevant blocks (or when no summary exists).
+  // - Skip empty metadata lines entirely.
+  // - Mark blocks with a similarity score so we can decide what to expand.
+  const RAW_TEXT_SIMILARITY_THRESHOLD = 0.6;
+
+  function formatList(label: string, values: string[]) {
+    if (values.length === 0) return null;
+    return `${label}: ${values.join(", ")}`;
+  }
+
   const contextText =
     input.contextBlocks.length > 0
       ? input.contextBlocks
-          .map((block, index) =>
-            [
-              `Entrada ${index + 1}`,
-              `Fecha: ${block.entryDate}`,
-              `Resumen: ${block.summary ?? "Ninguno"}`,
-              `Proyectos: ${block.projects.join(", ") || "Ninguno"}`,
-              `Personas: ${block.people.join(", ") || "Ninguna"}`,
-              `Temas: ${block.topics.join(", ") || "Ninguno"}`,
-              `Herramientas: ${block.tools.join(", ") || "Ninguna"}`,
-              `Eventos: ${block.events.join(", ") || "Ninguno"}`,
-              `Media: ${block.media.join(", ") || "Ninguna"}`,
-              `Observaciones: ${block.observations.join(", ") || "Ninguna"}`,
-              `Emociones: ${block.emotions.join(", ") || "Ninguna"}`,
-              `Acciones: ${block.actionItems.join(", ") || "Ninguna"}`,
-              `Lecciones: ${block.lessons.join(", ") || "Ninguna"}`,
-              `Ideas: ${block.ideas.join(", ") || "Ninguna"}`,
-              `Experiencias: ${block.experiences.join(", ") || "Ninguna"}`,
-              `Conocimiento de trabajo: ${block.workKnowledge.join(", ") || "Ninguno"}`,
-              `Texto: ${block.rawText}`
-            ].join("\n")
-          )
+          .map((block, index) => {
+            const similarity = block.similarity ?? 0;
+            const includeRawText =
+              !block.summary || similarity >= RAW_TEXT_SIMILARITY_THRESHOLD;
+
+            const lines: Array<string | null> = [
+              `Entrada ${index + 1} (fecha: ${block.entryDate})`,
+              block.summary ? `Resumen: ${block.summary}` : null,
+              formatList("Proyectos", block.projects),
+              formatList("Personas", block.people),
+              formatList("Temas", block.topics),
+              formatList("Herramientas", block.tools),
+              formatList("Eventos", block.events),
+              formatList("Media", block.media),
+              formatList("Observaciones", block.observations),
+              formatList("Emociones", block.emotions),
+              formatList("Acciones", block.actionItems),
+              formatList("Lecciones", block.lessons),
+              formatList("Ideas", block.ideas),
+              formatList("Experiencias", block.experiences),
+              formatList("Conocimiento de trabajo", block.workKnowledge),
+              includeRawText ? `Texto: ${block.rawText}` : null
+            ];
+
+            return lines.filter((line): line is string => line !== null).join("\n");
+          })
           .join("\n\n")
       : "";
 
@@ -285,8 +302,11 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
     ? `Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
     : `Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
 
+  // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
+  const HISTORY_TURN_LIMIT = 6;
   const historyMessages = (input.history ?? [])
     .filter((turn) => turn.content.trim().length > 0)
+    .slice(-HISTORY_TURN_LIMIT)
     .map((turn) => ({ role: turn.role, content: turn.content }));
 
   const payload = await callOpenAi<{

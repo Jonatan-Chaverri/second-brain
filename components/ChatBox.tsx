@@ -45,7 +45,7 @@ export function ChatBox() {
         },
         body: JSON.stringify({
           message: trimmed,
-          history: messages
+          history: messages.slice(-6)
         })
       });
 

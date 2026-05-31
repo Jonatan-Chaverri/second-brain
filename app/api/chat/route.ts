@@ -53,7 +53,8 @@ export async function POST(request: Request) {
         lessons: entry.lessons,
         ideas: entry.ideas,
         experiences: entry.experiences,
-        workKnowledge: entry.workKnowledge
+        workKnowledge: entry.workKnowledge,
+        similarity: entry.similarity
       }))
     });
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireOwnerApiUser, syncOwnerUser } from "@/lib/auth";
 import { buildChatContext } from "@/lib/chat-context";
-import { answerJournalQuestion, OpenAiProcessingError } from "@/lib/openai";
+import { OpenAiProcessingError, streamJournalQuestion } from "@/lib/openai";
 
 const chatSchema = z.object({
   message: z.string().trim().min(1).max(10_000),
@@ -14,6 +14,14 @@ const chatSchema = z.object({
       })
     )
     .max(40)
+    .optional(),
+  browserContext: z
+    .object({
+      localDate: z.string().trim().min(8).max(20),
+      localTime: z.string().trim().min(4).max(20),
+      timeZone: z.string().trim().min(1).max(80),
+      utcOffset: z.string().trim().min(3).max(10)
+    })
     .optional()
 });
 
@@ -34,9 +42,10 @@ export async function POST(request: Request) {
       limit: 5
     });
 
-    const answer = await answerJournalQuestion({
+    const answerStream = await streamJournalQuestion({
       message: parsed.data.message,
       history: parsed.data.history,
+      browserContext: parsed.data.browserContext,
       contextBlocks: context.entries.map((entry) => ({
         entryDate: entry.entryDate,
         summary: entry.summary,
@@ -58,26 +67,11 @@ export async function POST(request: Request) {
       }))
     });
 
-    return NextResponse.json({
-      answer,
-      context: {
-        hasEnoughContext: context.hasEnoughContext,
-        entries: context.entries.map((entry) => ({
-          entryDate: entry.entryDate,
-          summary: entry.summary,
-          projects: entry.projects,
-          people: entry.people,
-          topics: entry.topics,
-          tools: entry.tools,
-          events: entry.events,
-          media: entry.media,
-          observations: entry.observations,
-          lessons: entry.lessons,
-          ideas: entry.ideas,
-          experiences: entry.experiences,
-          workKnowledge: entry.workKnowledge,
-          similarity: entry.similarity
-        }))
+    return new Response(answerStream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-transform",
+        "X-Entries-Used": String(context.entries.length)
       }
     });
   } catch (error) {

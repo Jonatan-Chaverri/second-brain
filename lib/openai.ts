@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { serverEnv } from "@/lib/env";
-import { normalizeMetadataList } from "@/lib/entity-normalization";
+import {
+  normalizeLookupKey,
+  normalizeMetadataList
+} from "@/lib/entity-normalization";
 
 const analysisSchema = z.object({
   summary: z.string().trim().max(1500),
@@ -46,6 +49,17 @@ export class OpenAiProcessingError extends Error {
 
 function dedupeStrings(values: string[]) {
   return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
+function includesNormalizedPhrase(haystack: string, needle: string) {
+  const normalizedHaystack = normalizeLookupKey(haystack);
+  const normalizedNeedle = normalizeLookupKey(needle);
+
+  if (!normalizedHaystack || !normalizedNeedle) {
+    return false;
+  }
+
+  return ` ${normalizedHaystack} `.includes(` ${normalizedNeedle} `);
 }
 
 async function callOpenAi<T>(path: string, body: Record<string, unknown>) {
@@ -173,6 +187,12 @@ async function generateEmbedding(rawText: string) {
 type ChatAnswerInput = {
   message: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
+  browserContext?: {
+    localDate: string;
+    localTime: string;
+    timeZone: string;
+    utcOffset: string;
+  };
   contextBlocks: Array<{
     entryDate: string;
     summary: string | null;
@@ -193,6 +213,192 @@ type ChatAnswerInput = {
     similarity?: number;
   }>;
 };
+
+function buildJournalChatMessages(input: ChatAnswerInput) {
+  const trimmedMessage = input.message.trim();
+
+  if (!trimmedMessage) {
+    throw new OpenAiProcessingError("Chat message was empty.");
+  }
+
+  // Token-saving rules:
+  // - Only include rawText for highly relevant blocks (or when no summary exists).
+  // - Always include rawText when the user explicitly asks about a tracked person/project
+  //   present in the block, otherwise we can lose relationship details like
+  //   "Valeria es mi novia".
+  // - Skip empty metadata lines entirely.
+  // - Mark blocks with a similarity score so we can decide what to expand.
+  const RAW_TEXT_SIMILARITY_THRESHOLD = 0.6;
+
+  function formatList(label: string, values: string[]) {
+    if (values.length === 0) return null;
+    return `${label}: ${values.join(", ")}`;
+  }
+
+  const contextText =
+    input.contextBlocks.length > 0
+      ? input.contextBlocks
+          .map((block, index) => {
+            const similarity = block.similarity ?? 0;
+            const mentionsTrackedEntity = [...block.people, ...block.projects].some((value) =>
+              includesNormalizedPhrase(trimmedMessage, value)
+            );
+            const includeRawText =
+              !block.summary ||
+              similarity >= RAW_TEXT_SIMILARITY_THRESHOLD ||
+              mentionsTrackedEntity;
+
+            const lines: Array<string | null> = [
+              `Entrada ${index + 1} (fecha: ${block.entryDate})`,
+              block.summary ? `Resumen: ${block.summary}` : null,
+              formatList("Proyectos", block.projects),
+              formatList("Personas", block.people),
+              formatList("Temas", block.topics),
+              formatList("Herramientas", block.tools),
+              formatList("Eventos", block.events),
+              formatList("Media", block.media),
+              formatList("Observaciones", block.observations),
+              formatList("Emociones", block.emotions),
+              formatList("Acciones", block.actionItems),
+              formatList("Lecciones", block.lessons),
+              formatList("Ideas", block.ideas),
+              formatList("Experiencias", block.experiences),
+              formatList("Conocimiento de trabajo", block.workKnowledge),
+              includeRawText ? `Texto: ${block.rawText}` : null
+            ];
+
+            return lines.filter((line): line is string => line !== null).join("\n");
+          })
+          .join("\n\n")
+      : "";
+
+  const hasContext = input.contextBlocks.length > 0;
+  const browserTimeContext = input.browserContext
+    ? `Fecha local del usuario: ${input.browserContext.localDate} ${input.browserContext.localTime} (zona horaria ${input.browserContext.timeZone}, UTC${input.browserContext.utcOffset})`
+    : null;
+
+  const systemPrompt = [
+    'Eres el asistente personal de un diario privado ("segundo cerebro").',
+    "Cuando el usuario pregunte por hoy, ayer, mañana o esta semana, usa la fecha local del usuario proporcionada en el contexto temporal; no asumas UTC ni hora del servidor.",
+    "Si el usuario hace una pregunta sobre su vida, trabajo, proyectos, personas o cualquier cosa que esté o pueda estar en el diario, usa únicamente el contexto del diario proporcionado y menciona fechas cuando estén disponibles. No inventes detalles. Si el contexto es insuficiente, dilo claramente.",
+    'Si el usuario solo saluda ("hola", "qué tal"), agradece, hace charla casual, o pregunta sobre ti o tus capacidades, responde de forma natural y breve sin mencionar el diario salvo que pregunte por él. NO resumas ni listes entradas del diario en respuestas casuales.',
+    "Si no se proporciona contexto del diario, asume que la pregunta no requiere consultar el diario y responde de forma conversacional.",
+    "Responde siempre en español. Mantén coherencia con los turnos previos de la conversación."
+  ].join(" ");
+
+  const userContent = hasContext
+    ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
+    : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
+
+  // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
+  const HISTORY_TURN_LIMIT = 6;
+  const historyMessages = (input.history ?? [])
+    .filter((turn) => turn.content.trim().length > 0)
+    .slice(-HISTORY_TURN_LIMIT)
+    .map((turn) => ({ role: turn.role, content: turn.content }));
+
+  return [
+    {
+      role: "system",
+      content: systemPrompt
+    },
+    ...historyMessages,
+    {
+      role: "user",
+      content: userContent
+    }
+  ];
+}
+
+async function createOpenAiChatTextStream(messages: Array<{ role: string; content: string }>) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${serverEnv.openAiApiKey}`
+    },
+    body: JSON.stringify({
+      model: serverEnv.openAiSummaryModel,
+      temperature: 0.2,
+      stream: true,
+      messages
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new OpenAiProcessingError(`OpenAI request failed: ${response.status} ${details}`);
+  }
+
+  if (!response.body) {
+    throw new OpenAiProcessingError("OpenAI stream response was empty.");
+  }
+
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+
+  return new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+
+          if (done) {
+            break;
+          }
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const rawLine of lines) {
+            const line = rawLine.trim();
+
+            if (!line || !line.startsWith("data:")) {
+              continue;
+            }
+
+            const payload = line.slice(5).trim();
+
+            if (payload === "[DONE]") {
+              controller.close();
+              return;
+            }
+
+            let parsed: {
+              choices?: Array<{
+                delta?: {
+                  content?: string;
+                };
+              }>;
+            };
+
+            try {
+              parsed = JSON.parse(payload);
+            } catch {
+              continue;
+            }
+
+            const chunk = parsed.choices?.[0]?.delta?.content;
+
+            if (chunk) {
+              controller.enqueue(encoder.encode(chunk));
+            }
+          }
+        }
+
+        controller.close();
+      } catch (error) {
+        controller.error(error);
+      } finally {
+        reader.releaseLock();
+      }
+    }
+  });
+}
 
 export async function analyzeJournalEntry(rawText: string): Promise<JournalAnalysis> {
   const trimmed = rawText.trim();
@@ -239,75 +445,7 @@ export async function generateQueryEmbedding(message: string) {
 }
 
 export async function answerJournalQuestion(input: ChatAnswerInput) {
-  const trimmedMessage = input.message.trim();
-
-  if (!trimmedMessage) {
-    throw new OpenAiProcessingError("Chat message was empty.");
-  }
-
-  // Token-saving rules:
-  // - Only include rawText for highly relevant blocks (or when no summary exists).
-  // - Skip empty metadata lines entirely.
-  // - Mark blocks with a similarity score so we can decide what to expand.
-  const RAW_TEXT_SIMILARITY_THRESHOLD = 0.6;
-
-  function formatList(label: string, values: string[]) {
-    if (values.length === 0) return null;
-    return `${label}: ${values.join(", ")}`;
-  }
-
-  const contextText =
-    input.contextBlocks.length > 0
-      ? input.contextBlocks
-          .map((block, index) => {
-            const similarity = block.similarity ?? 0;
-            const includeRawText =
-              !block.summary || similarity >= RAW_TEXT_SIMILARITY_THRESHOLD;
-
-            const lines: Array<string | null> = [
-              `Entrada ${index + 1} (fecha: ${block.entryDate})`,
-              block.summary ? `Resumen: ${block.summary}` : null,
-              formatList("Proyectos", block.projects),
-              formatList("Personas", block.people),
-              formatList("Temas", block.topics),
-              formatList("Herramientas", block.tools),
-              formatList("Eventos", block.events),
-              formatList("Media", block.media),
-              formatList("Observaciones", block.observations),
-              formatList("Emociones", block.emotions),
-              formatList("Acciones", block.actionItems),
-              formatList("Lecciones", block.lessons),
-              formatList("Ideas", block.ideas),
-              formatList("Experiencias", block.experiences),
-              formatList("Conocimiento de trabajo", block.workKnowledge),
-              includeRawText ? `Texto: ${block.rawText}` : null
-            ];
-
-            return lines.filter((line): line is string => line !== null).join("\n");
-          })
-          .join("\n\n")
-      : "";
-
-  const hasContext = input.contextBlocks.length > 0;
-
-  const systemPrompt = [
-    "Eres el asistente personal de un diario privado (\"segundo cerebro\").",
-    "Si el usuario hace una pregunta sobre su vida, trabajo, proyectos, personas o cualquier cosa que esté o pueda estar en el diario, usa únicamente el contexto del diario proporcionado y menciona fechas cuando estén disponibles. No inventes detalles. Si el contexto es insuficiente, dilo claramente.",
-    "Si el usuario solo saluda (\"hola\", \"qué tal\"), agradece, hace charla casual, o pregunta sobre ti o tus capacidades, responde de forma natural y breve sin mencionar el diario salvo que pregunte por él. NO resumas ni listes entradas del diario en respuestas casuales.",
-    "Si no se proporciona contexto del diario, asume que la pregunta no requiere consultar el diario y responde de forma conversacional.",
-    "Responde siempre en español. Mantén coherencia con los turnos previos de la conversación."
-  ].join(" ");
-
-  const userContent = hasContext
-    ? `Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
-    : `Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
-
-  // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
-  const HISTORY_TURN_LIMIT = 6;
-  const historyMessages = (input.history ?? [])
-    .filter((turn) => turn.content.trim().length > 0)
-    .slice(-HISTORY_TURN_LIMIT)
-    .map((turn) => ({ role: turn.role, content: turn.content }));
+  const messages = buildJournalChatMessages(input);
 
   const payload = await callOpenAi<{
     choices?: Array<{
@@ -318,17 +456,7 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
   }>("chat/completions", {
     model: serverEnv.openAiSummaryModel,
     temperature: 0.2,
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt
-      },
-      ...historyMessages,
-      {
-        role: "user",
-        content: userContent
-      }
-    ]
+    messages
   });
 
   const content = payload.choices?.[0]?.message?.content?.trim();
@@ -338,4 +466,9 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
   }
 
   return content;
+}
+
+export async function streamJournalQuestion(input: ChatAnswerInput) {
+  const messages = buildJournalChatMessages(input);
+  return createOpenAiChatTextStream(messages);
 }

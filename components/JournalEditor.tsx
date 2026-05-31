@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Spinner } from "@/components/Spinner";
 
 type SaveStatus = "idle" | "loading" | "saved" | "error";
@@ -20,12 +20,48 @@ function getLocalDateString() {
   return new Date(now.getTime() - timezoneOffset).toISOString().slice(0, 10);
 }
 
+function splitRawTextIntoBlocks(rawText: string) {
+  const lines = rawText
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim());
+
+  const nonEmptyLines = lines.filter((line) => line.length > 0);
+  return nonEmptyLines.length > 0 ? [...nonEmptyLines, ""] : [""];
+}
+
+function mergeBlocksIntoRawText(blocks: string[]) {
+  return blocks
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0)
+    .join("\n");
+}
+
+function normalizeEditorBlocks(nextBlocks: string[]) {
+  const nonEmptyBlocks = nextBlocks.map((block) => block.replace(/\r\n/g, "\n")).filter((block) => block.trim().length > 0);
+  return [...nonEmptyBlocks, ""];
+}
+
 export function JournalEditor() {
-  const [rawText, setRawText] = useState("");
+  const [blocks, setBlocks] = useState<string[]>([""]);
   const [entryDate, setEntryDate] = useState("");
   const [status, setStatus] = useState<SaveStatus>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
+  const blockRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
+
+  function autosizeTextarea(textarea: HTMLTextAreaElement | null) {
+    if (!textarea) {
+      return;
+    }
+
+    textarea.style.height = "0px";
+    textarea.style.height = `${textarea.scrollHeight}px`;
+  }
+
+  useEffect(() => {
+    blockRefs.current.forEach((textarea) => autosizeTextarea(textarea));
+  }, [blocks]);
 
   useEffect(() => {
     const today = getLocalDateString();
@@ -43,7 +79,7 @@ export function JournalEditor() {
         }
 
         const data = (await response.json()) as TodayEntryResponse;
-        setRawText(data.entry?.rawText ?? "");
+        setBlocks(splitRawTextIntoBlocks(data.entry?.rawText ?? ""));
       } catch (error) {
         setErrorMessage(error instanceof Error ? error.message : "Unexpected error.");
       } finally {
@@ -57,6 +93,7 @@ export function JournalEditor() {
   async function handleSave() {
     setStatus("loading");
     setErrorMessage(null);
+    const rawText = mergeBlocksIntoRawText(blocks);
 
     try {
       const response = await fetch("/api/journal/save", {
@@ -87,6 +124,54 @@ export function JournalEditor() {
     }, 1800);
   }
 
+  function focusBlock(index: number) {
+    window.requestAnimationFrame(() => {
+      const nextBlock = blockRefs.current[index];
+      nextBlock?.focus();
+      nextBlock?.setSelectionRange(nextBlock.value.length, nextBlock.value.length);
+    });
+  }
+
+  function updateBlock(index: number, value: string) {
+    const normalized = value.replace(/\r\n/g, "\n");
+
+    if (!normalized.includes("\n")) {
+      setBlocks((current) => {
+        const next = [...current];
+        next[index] = normalized;
+        return normalizeEditorBlocks(next);
+      });
+      return;
+    }
+
+    const splitValues = normalized.split("\n").map((line) => line.trim());
+
+    setBlocks((current) => {
+      const next = [...current];
+      const [first, ...rest] = splitValues;
+      next[index] = first ?? "";
+      next.splice(index + 1, 0, ...rest);
+      return normalizeEditorBlocks(next);
+    });
+
+    const nextFocusIndex = index + Math.max(splitValues.length - 1, 1);
+    focusBlock(nextFocusIndex);
+  }
+
+  function removeBlock(index: number) {
+    setBlocks((current) => {
+      if (current.length <= 1) {
+        return [""];
+      }
+
+      const next = [...current];
+      next.splice(index, 1);
+      return normalizeEditorBlocks(next);
+    });
+
+    focusBlock(Math.max(index - 1, 0));
+  }
+
   return (
     <section className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-3 overflow-hidden px-3 py-2 sm:px-6 sm:py-4">
       <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-sand-200 bg-white/85 p-3 shadow-lg shadow-sand-900/5 sm:rounded-[2rem] sm:p-5">
@@ -102,13 +187,49 @@ export function JournalEditor() {
         </div>
 
         <div className="relative mt-3 flex flex-1 overflow-hidden">
-          <textarea
-            value={rawText}
-            onChange={(event) => setRawText(event.target.value)}
-            placeholder="Write freely. Capture the day, the feeling, the unfinished thought."
-            disabled={loadingInitial}
-            className="journal-textarea w-full flex-1 resize-none overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/80 px-4 py-3 text-sm leading-6 text-sand-900 outline-none transition focus:border-sand-400 focus:bg-white disabled:opacity-50 sm:rounded-[1.75rem] sm:px-5 sm:py-4"
-          />
+          <div className="journal-textarea flex w-full flex-1 flex-col gap-2 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-2.5 sm:rounded-[1.75rem] sm:p-3">
+            {blocks.map((block, index) => (
+              <div
+                key={`block-${index}`}
+                className="flex items-start gap-3 rounded-xl border border-sand-200/80 bg-white/90 px-3 py-2 shadow-sm shadow-sand-900/5 transition-colors focus-within:border-indigo-300 focus-within:ring-1 focus-within:ring-indigo-300/50"
+              >
+                <span
+                  aria-hidden="true"
+                  className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-indigo-400"
+                />
+                <textarea
+                  ref={(node) => {
+                    blockRefs.current[index] = node;
+                    autosizeTextarea(node);
+                  }}
+                  value={block}
+                  disabled={loadingInitial}
+                  onChange={(event) => {
+                    updateBlock(index, event.target.value);
+                    autosizeTextarea(event.currentTarget);
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      focusBlock(Math.min(index + 1, blocks.length - 1));
+                    }
+
+                    if (event.key === "Backspace" && block.length === 0) {
+                      event.preventDefault();
+                      removeBlock(index);
+                    }
+                  }}
+                  placeholder={
+                    index === 0
+                      ? "Type an idea and press Enter to create the next block."
+                      : "New block"
+                  }
+                  rows={1}
+                  className="w-full overflow-hidden resize-none bg-transparent text-sm leading-6 text-sand-900 outline-none placeholder:text-sand-500 disabled:opacity-50"
+                />
+              </div>
+            ))}
+          </div>
           {loadingInitial || status === "loading" ? (
             <div
               aria-live="polite"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ChatMessage = {
   role: "user" | "assistant";
@@ -8,19 +8,55 @@ type ChatMessage = {
   entriesUsed?: number;
 };
 
-type ChatApiResponse = {
-  answer: string;
-  context?: {
-    hasEnoughContext: boolean;
-    entries: Array<unknown>;
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function getBrowserTimeContext() {
+  const now = new Date();
+  const offsetMinutes = -now.getTimezoneOffset();
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const absoluteOffset = Math.abs(offsetMinutes);
+  const offsetHours = Math.floor(absoluteOffset / 60);
+  const offsetMins = absoluteOffset % 60;
+
+  return {
+    localDate: `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`,
+    localTime: `${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Unknown",
+    utcOffset: `${sign}${pad2(offsetHours)}:${pad2(offsetMins)}`
   };
-};
+}
 
 export function ChatBox() {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [status, setStatus] = useState<"idle" | "loading" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pinnedUserIndex, setPinnedUserIndex] = useState<number | null>(null);
+  const historyRef = useRef<HTMLDivElement | null>(null);
+  const messageRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const isStreaming = status === "loading";
+
+  useEffect(() => {
+    if (pinnedUserIndex === null) {
+      return;
+    }
+
+    const historyElement = historyRef.current;
+    const messageElement = messageRefs.current[pinnedUserIndex];
+
+    if (!historyElement || !messageElement) {
+      return;
+    }
+
+    // Keep the latest user question pinned near the top while assistant output streams.
+    const top = Math.max(messageElement.offsetTop - 8, 0);
+    historyElement.scrollTo({
+      top,
+      behavior: isStreaming ? "auto" : "smooth"
+    });
+  }, [messages, pinnedUserIndex, isStreaming]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -31,13 +67,17 @@ export function ChatBox() {
       return;
     }
 
-    const nextMessages = [...messages, { role: "user" as const, content: trimmed }];
-    setMessages(nextMessages);
+    const userMessage: ChatMessage = { role: "user", content: trimmed };
+    const userMessageIndex = messages.length;
+    setPinnedUserIndex(userMessageIndex);
+    setMessages((current) => [...current, userMessage]);
     setMessage("");
     setStatus("loading");
     setErrorMessage(null);
 
     try {
+      const browserContext = getBrowserTimeContext();
+
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: {
@@ -45,29 +85,90 @@ export function ChatBox() {
         },
         body: JSON.stringify({
           message: trimmed,
-          history: messages.slice(-6)
+          history: messages.slice(-6),
+          browserContext
         })
       });
 
-      const data = (await response.json()) as Partial<ChatApiResponse> & {
-        error?: string;
-      };
-
-      if (!response.ok || !data.answer) {
-        throw new Error(data.error ?? "Could not get a chat response.");
+      if (!response.ok) {
+        const data = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(data?.error ?? "Could not get a chat response.");
       }
 
-      setMessages([
-        ...nextMessages,
+      if (!response.body) {
+        throw new Error("Could not stream chat response.");
+      }
+
+      const entriesUsed = Number(response.headers.get("X-Entries-Used") ?? "0");
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assistantContent = "";
+
+      setMessages((current) => [
+        ...current,
         {
           role: "assistant",
-          content: data.answer,
-          entriesUsed: data.context?.entries?.length ?? 0
+          content: "",
+          entriesUsed
         }
       ]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          break;
+        }
+
+        assistantContent += decoder.decode(value, { stream: true });
+
+        setMessages((current) => {
+          if (current.length === 0) {
+            return current;
+          }
+
+          const next = [...current];
+          const lastIndex = next.length - 1;
+          const last = next[lastIndex];
+
+          if (last.role !== "assistant") {
+            return next;
+          }
+
+          next[lastIndex] = {
+            ...last,
+            content: assistantContent,
+            entriesUsed
+          };
+
+          return next;
+        });
+      }
+
+      assistantContent += decoder.decode();
+
+      if (!assistantContent.trim()) {
+        throw new Error("Could not get a chat response.");
+      }
       setStatus("idle");
+      setPinnedUserIndex(null);
     } catch (error) {
+      setMessages((current) => {
+        if (current.length === 0) {
+          return current;
+        }
+
+        const next = [...current];
+        const last = next[next.length - 1];
+
+        if (last.role === "assistant" && last.content.trim().length === 0) {
+          next.pop();
+        }
+
+        return next;
+      });
       setStatus("error");
+      setPinnedUserIndex(null);
       setErrorMessage(error instanceof Error ? error.message : "Unexpected error.");
     }
   }
@@ -81,7 +182,10 @@ export function ChatBox() {
           </h1>
         </div>
 
-        <div className="journal-textarea mt-3 flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-4 sm:rounded-[1.75rem]">
+        <div
+          ref={historyRef}
+          className="journal-textarea mt-3 flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-4 sm:rounded-[1.75rem]"
+        >
           {messages.length === 0 ? (
             <p className="text-sm text-sand-500">
               Try asking about a project, a person, or what happened on a specific date.
@@ -91,6 +195,9 @@ export function ChatBox() {
           {messages.map((entry, index) => (
             <div
               key={`${entry.role}-${index}`}
+              ref={(node) => {
+                messageRefs.current[index] = node;
+              }}
               className={
                 entry.role === "user"
                   ? "ml-auto flex max-w-[85%] flex-col items-end gap-1"
@@ -105,6 +212,12 @@ export function ChatBox() {
                 }
               >
                 {entry.content}
+                {entry.role === "assistant" && isStreaming && index === messages.length - 1 ? (
+                  <span
+                    aria-hidden="true"
+                    className="ml-1 inline-block h-4 w-0.5 animate-pulse rounded-full bg-indigo-400 align-[-2px]"
+                  />
+                ) : null}
               </div>
               {entry.role === "assistant" && entry.entriesUsed !== undefined ? (
                 <span
@@ -121,6 +234,10 @@ export function ChatBox() {
               ) : null}
             </div>
           ))}
+
+          {isStreaming && pinnedUserIndex !== null ? (
+            <div aria-hidden="true" className="h-[45vh] min-h-48 w-full" />
+          ) : null}
         </div>
 
         <form onSubmit={handleSubmit} className="mt-4 flex flex-col gap-3 sm:mt-5">

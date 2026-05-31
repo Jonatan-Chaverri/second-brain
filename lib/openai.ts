@@ -1,9 +1,15 @@
 import { z } from "zod";
+import { UserInsightCategory } from "@prisma/client";
 import { serverEnv } from "@/lib/env";
 import {
   normalizeLookupKey,
   normalizeMetadataList
 } from "@/lib/entity-normalization";
+
+const insightCategories = Object.values(UserInsightCategory) as [
+  UserInsightCategory,
+  ...UserInsightCategory[]
+];
 
 const analysisSchema = z.object({
   summary: z.string().trim().max(1500),
@@ -19,7 +25,17 @@ const analysisSchema = z.object({
   lessons: z.array(z.string().trim().min(1).max(240)).max(12),
   ideas: z.array(z.string().trim().min(1).max(240)).max(12),
   experiences: z.array(z.string().trim().min(1).max(240)).max(12),
-  work_knowledge: z.array(z.string().trim().min(1).max(240)).max(12)
+  work_knowledge: z.array(z.string().trim().min(1).max(240)).max(12),
+  self_insights: z
+    .array(
+      z.object({
+        category: z.enum(insightCategories),
+        content: z.string().trim().min(1).max(300)
+      })
+    )
+    .max(10)
+    .optional()
+    .default([])
 });
 
 export type JournalAnalysis = {
@@ -37,6 +53,7 @@ export type JournalAnalysis = {
   ideas: string[];
   experiences: string[];
   workKnowledge: string[];
+  selfInsights: Array<{ category: UserInsightCategory; content: string }>;
   embedding: number[];
 };
 
@@ -101,7 +118,7 @@ async function summarizeJournalEntry(rawText: string) {
             "Analiza entradas de diario personales.",
             "Preserva el idioma principal de la entrada en el resumen y la metadata.",
             "Si la entrada está en español, responde en español. Si está en inglés, responde en inglés.",
-            "Devuelve JSON estricto con estas llaves: summary, projects, people, topics, tools, events, media, observations, emotions, action_items, lessons, ideas, experiences, work_knowledge.",
+            "Devuelve JSON estricto con estas llaves: summary, projects, people, topics, tools, events, media, observations, emotions, action_items, lessons, ideas, experiences, work_knowledge, self_insights.",
             "summary debe ser una sola oración breve y concisa en el mismo idioma de la entrada.",
             "projects y people contienen entidades principales mencionadas en la entrada.",
             "topics solo debe contener temas abstractos de alto valor, por ejemplo: trabajo, programacion, planificacion, aprendizaje o salud.",
@@ -113,6 +130,10 @@ async function summarizeJournalEntry(rawText: string) {
             "ideas contiene ideas nuevas, posibilidades futuras, conceptos creativos, de producto, negocio o técnicas mencionadas en la entrada.",
             "experiences contiene experiencias personales o profesionales notables descritas en la entrada.",
             "work_knowledge contiene conocimiento específico de trabajo, hallazgos técnicos, debugging, comportamiento del sistema, detalles de proceso o conocimiento de dominio aprendido en la entrada.",
+            "self_insights es una lista de afirmaciones de auto-conocimiento del autor extraídas de la entrada. Cada elemento es {category, content}. Solo incluye aquellas que el autor expresa sobre sí mismo de forma clara (no sobre otras personas).",
+            "category debe ser una de: insecurity (inseguridades, dudas sobre uno mismo), fear (miedos), achievement (logros propios), strength (fortalezas), weakness (debilidades), value (valores), belief (creencias personales), goal (metas), dream (sueños o aspiraciones), preference (preferencias personales), relationship_pattern (patrones en sus relaciones), habit (hábitos), other.",
+            "content debe ser una oración breve en primera o tercera persona neutra que capture el insight (por ejemplo: 'Se siente realizado al trabajar en sus proyectos').",
+            "Solo emite self_insights cuando el texto contenga material introspectivo explícito. Si no hay, devuelve [] .",
             "No mezcles herramientas, medios, observaciones o eventos dentro de topics.",
             "Evita duplicados y variantes del mismo concepto.",
             "Prefiere nombres canónicos y concisos.",
@@ -161,7 +182,13 @@ async function summarizeJournalEntry(rawText: string) {
     lessons: dedupeStrings(parsed.data.lessons),
     ideas: dedupeStrings(parsed.data.ideas),
     experiences: dedupeStrings(parsed.data.experiences),
-    workKnowledge: dedupeStrings(parsed.data.work_knowledge)
+    workKnowledge: dedupeStrings(parsed.data.work_knowledge),
+    selfInsights: (parsed.data.self_insights ?? [])
+      .map((insight) => ({
+        category: insight.category,
+        content: insight.content.trim()
+      }))
+      .filter((insight) => insight.content.length > 0)
   };
 }
 
@@ -218,6 +245,11 @@ type ChatAnswerInput = {
     experiences: string[];
     workKnowledge: string[];
     similarity?: number;
+  }>;
+  userInsights?: Array<{
+    category: UserInsightCategory;
+    content: string;
+    entryDate: string | null;
   }>;
 };
 
@@ -304,6 +336,9 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
     'Eres el asistente personal de un diario privado ("segundo cerebro").',
     "Cuando el usuario pregunte por hoy, ayer, mañana o esta semana, usa la fecha local del usuario proporcionada en el contexto temporal; no asumas UTC ni hora del servidor.",
     "Cuando exista un Directorio de personas, trátalo como datos confiables provistos por el usuario sobre esas personas (notas, cumpleaños, alias, tags). Úsalo libremente para responder preguntas sobre ellas, incluso si no aparecen en las entradas recuperadas. Si el usuario pregunta por un grupo descrito por un tag (por ejemplo, \"familia\", \"amigos\", \"colegas\"), responde listando las personas del directorio cuyos tags coincidan.",
+    "Cuando exista una sección 'Conocimiento del usuario sobre sí mismo', trátala como hechos extraídos previamente de las entradas del diario sobre el autor. Úsala como fuente principal para preguntas introspectivas (inseguridades, miedos, logros, fortalezas, debilidades, valores, metas, sueños, hábitos, etc.).",
+    "Para preguntas introspectivas no te limites a repetir los insights guardados: identifica patrones, posibles raíces o creencias subyacentes (por ejemplo, comparación social, miedo al rechazo, baja autoestima, perfeccionismo, necesidad de validación), conecta insights relacionados entre sí y, cuando ayude, ofrece una hipótesis breve sobre qué podría estar detrás. Mantén un tono cálido, honesto y directo, sin diagnosticar ni moralizar. Cita las fechas como evidencia cuando refuerce el punto, pero el foco debe ser la reflexión, no el listado.",
+    "Estructura sugerida para respuestas introspectivas: (1) una o dos frases que nombren el patrón o tema central, (2) ejemplos concretos del diario que lo respaldan con su fecha, (3) una hipótesis breve sobre lo que podría estar debajo, (4) opcionalmente una pregunta abierta que invite a profundizar. Evita preguntas genéricas tipo '¿quieres trabajar en tu confianza?'.",
     "Si el usuario hace una pregunta sobre su vida, trabajo, proyectos, personas o cualquier cosa que esté o pueda estar en el diario, usa únicamente el contexto del diario proporcionado y menciona fechas cuando estén disponibles. No inventes detalles. Si el contexto es insuficiente, dilo claramente.",
     'Si el usuario solo saluda ("hola", "qué tal"), agradece, hace charla casual, o pregunta sobre ti o tus capacidades, responde de forma natural y breve sin mencionar el diario salvo que pregunte por él. NO resumas ni listes entradas del diario en respuestas casuales.',
     "Si no se proporciona contexto del diario, asume que la pregunta no requiere consultar el diario y responde de forma conversacional.",
@@ -314,9 +349,26 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
     ? `Directorio de personas:\n${peopleDirectoryText}\n\n`
     : "";
 
-  const userContent = hasContext
-    ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
-    : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
+  const insightsByCategory = new Map<UserInsightCategory, string[]>();
+  for (const insight of input.userInsights ?? []) {
+    const list = insightsByCategory.get(insight.category) ?? [];
+    const dateSuffix = insight.entryDate ? ` (${insight.entryDate})` : "";
+    list.push(`- ${insight.content}${dateSuffix}`);
+    insightsByCategory.set(insight.category, list);
+  }
+  const insightsSection =
+    insightsByCategory.size > 0
+      ? `Conocimiento del usuario sobre sí mismo:\n${Array.from(insightsByCategory.entries())
+          .map(([category, items]) => `${category}:\n${items.join("\n")}`)
+          .join("\n\n")}\n\n`
+      : "";
+
+  const hasInsights = insightsByCategory.size > 0;
+
+  const userContent =
+    hasContext || hasInsights
+      ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}${insightsSection}Pregunta:\n${trimmedMessage}${hasContext ? `\n\nContexto del diario:\n${contextText}` : ""}`
+      : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
 
   // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
   const HISTORY_TURN_LIMIT = 6;
@@ -447,6 +499,7 @@ export async function analyzeJournalEntry(rawText: string): Promise<JournalAnaly
       ideas: [],
       experiences: [],
       workKnowledge: [],
+      selfInsights: [],
       embedding: []
     };
   }

@@ -123,6 +123,18 @@ export async function saveJournalEntryForUser(input: {
 
     await setJournalEntryEmbedding(savedEntry.id, analysis.embedding, tx);
 
+    await tx.userInsight.deleteMany({ where: { journalEntryId: savedEntry.id } });
+    if (analysis.selfInsights.length > 0) {
+      await tx.userInsight.createMany({
+        data: analysis.selfInsights.map((insight) => ({
+          userId: input.userId,
+          journalEntryId: savedEntry.id,
+          category: insight.category,
+          content: insight.content
+        }))
+      });
+    }
+
     return tx.journalEntry.findUniqueOrThrow({
       where: { id: savedEntry.id },
       include: journalEntryWithRelationsInclude

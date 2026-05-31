@@ -1,4 +1,4 @@
-import { EntityAliasType, Prisma } from "@prisma/client";
+import { EntityAliasType, Prisma, UserInsightCategory } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateQueryEmbedding } from "@/lib/openai";
 import { normalizeLookupKey } from "@/lib/entity-normalization";
@@ -140,6 +140,138 @@ export async function findRelevantJournalEntries(input: {
     .filter((entry): entry is ChatContextBlock => entry !== null);
 }
 
+export type ChatContextUserInsight = {
+  category: UserInsightCategory;
+  content: string;
+  entryDate: string | null;
+};
+
+const INSIGHT_CATEGORY_KEYWORDS: Record<UserInsightCategory, string[]> = {
+  insecurity: [
+    "inseguridad",
+    "inseguridades",
+    "inseguro",
+    "insegura",
+    "insecurity",
+    "insecurities"
+  ],
+  fear: ["miedo", "miedos", "temor", "temores", "fear", "fears", "afraid"],
+  achievement: [
+    "logro",
+    "logros",
+    "éxito",
+    "éxitos",
+    "exito",
+    "exitos",
+    "achievement",
+    "achievements",
+    "win",
+    "wins"
+  ],
+  strength: [
+    "fortaleza",
+    "fortalezas",
+    "strength",
+    "strengths",
+    "virtud",
+    "virtudes"
+  ],
+  weakness: [
+    "debilidad",
+    "debilidades",
+    "weakness",
+    "weaknesses",
+    "defecto",
+    "defectos"
+  ],
+  value: ["valor", "valores", "value", "values", "principio", "principios"],
+  belief: [
+    "creencia",
+    "creencias",
+    "belief",
+    "beliefs",
+    "convicción",
+    "conviccion",
+    "convicciones"
+  ],
+  goal: ["meta", "metas", "objetivo", "objetivos", "goal", "goals"],
+  dream: [
+    "sueño",
+    "sueno",
+    "sueños",
+    "suenos",
+    "aspiración",
+    "aspiracion",
+    "aspiraciones",
+    "dream",
+    "dreams"
+  ],
+  preference: [
+    "preferencia",
+    "preferencias",
+    "gusto",
+    "gustos",
+    "preference",
+    "preferences"
+  ],
+  relationship_pattern: [
+    "relación",
+    "relacion",
+    "relaciones",
+    "vínculo",
+    "vinculo",
+    "vínculos",
+    "vinculos",
+    "relationship",
+    "relationships"
+  ],
+  habit: ["hábito", "habito", "hábitos", "habitos", "habit", "habits", "rutina", "rutinas"],
+  other: []
+};
+
+export function detectInsightCategoriesInMessage(message: string): UserInsightCategory[] {
+  const normalized = ` ${normalizeLookupKey(message)} `;
+  if (normalized.trim().length === 0) {
+    return [];
+  }
+
+  const matches = new Set<UserInsightCategory>();
+  for (const [category, keywords] of Object.entries(INSIGHT_CATEGORY_KEYWORDS) as Array<
+    [UserInsightCategory, string[]]
+  >) {
+    for (const keyword of keywords) {
+      const needle = normalizeLookupKey(keyword);
+      if (needle && normalized.includes(` ${needle} `)) {
+        matches.add(category);
+        break;
+      }
+    }
+  }
+  return Array.from(matches);
+}
+
+async function fetchUserInsights(
+  userId: string,
+  categories: UserInsightCategory[]
+): Promise<ChatContextUserInsight[]> {
+  if (categories.length === 0) return [];
+
+  const rows = await prisma.userInsight.findMany({
+    where: { userId, category: { in: categories } },
+    orderBy: { createdAt: "desc" },
+    take: 50,
+    include: {
+      journalEntry: { select: { entryDate: true } }
+    }
+  });
+
+  return rows.map((row) => ({
+    category: row.category,
+    content: row.content,
+    entryDate: row.journalEntry?.entryDate.toISOString().slice(0, 10) ?? null
+  }));
+}
+
 export async function buildChatContext(input: {
   userId: string;
   message: string;
@@ -177,10 +309,14 @@ export async function buildChatContext(input: {
     allCanonicalNames
   );
 
+  const matchedInsightCategories = detectInsightCategoriesInMessage(input.message);
+  const userInsights = await fetchUserInsights(input.userId, matchedInsightCategories);
+
   return {
     entries,
     peopleDirectory,
-    hasEnoughContext: entries.length > 0 || peopleDirectory.length > 0
+    userInsights,
+    hasEnoughContext: entries.length > 0 || peopleDirectory.length > 0 || userInsights.length > 0
   };
 }
 

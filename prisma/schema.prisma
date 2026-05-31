@@ -19,6 +19,22 @@ enum EntityAliasType {
   emotion
 }
 
+enum UserInsightCategory {
+  insecurity
+  fear
+  achievement
+  strength
+  weakness
+  value
+  belief
+  goal
+  dream
+  preference
+  relationship_pattern
+  habit
+  other
+}
+
 model User {
   id        String        @id @default(cuid())
   email     String        @unique
@@ -29,6 +45,7 @@ model User {
   people    Person[]
   aliases   EntityAlias[]
   tags      Tag[]
+  insights  UserInsight[]
 
   @@map("users")
 }
@@ -56,6 +73,7 @@ model JournalEntry {
   user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
   entryProjects JournalEntryProject[]
   entryPeople   JournalEntryPerson[]
+  insights      UserInsight[]
 
   @@unique([userId, entryDate])
   @@index([userId])
@@ -157,4 +175,20 @@ model JournalEntryPerson {
 
   @@id([journalEntryId, personId])
   @@map("journal_entry_people")
+}
+
+model UserInsight {
+  id             String              @id @default(cuid())
+  userId         String
+  journalEntryId String?
+  category       UserInsightCategory
+  content        String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  user           User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  journalEntry   JournalEntry?       @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, category])
+  @@index([journalEntryId])
+  @@map("user_insights")
 }

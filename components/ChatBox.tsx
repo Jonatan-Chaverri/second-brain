@@ -67,18 +67,15 @@ export function ChatBox() {
   }
 
   return (
-    <section className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-4 overflow-hidden px-3 py-3 sm:px-6 sm:py-10">
-      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-sand-200 bg-white/85 p-4 shadow-lg shadow-sand-900/5 sm:rounded-[2rem] sm:p-8">
-        <div className="border-b border-sand-100 pb-4 sm:pb-5">
-          <p className="text-xs font-medium uppercase tracking-[0.25em] text-sand-500 sm:text-sm">
-            Journal chat
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-sand-900 sm:mt-2 sm:text-3xl">
+    <section className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-3 overflow-hidden px-3 py-2 sm:px-6 sm:py-4">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-sand-200 bg-white/85 p-3 shadow-lg shadow-sand-900/5 sm:rounded-[2rem] sm:p-5">
+        <div className="flex items-center justify-center border-b border-sand-100 pb-2">
+          <h1 className="text-lg font-bold text-sand-900 sm:text-xl">
             Ask your second brain
           </h1>
         </div>
 
-        <div className="journal-textarea mt-4 flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-4 sm:mt-6 sm:rounded-[1.75rem]">
+        <div className="journal-textarea mt-3 flex flex-1 flex-col gap-3 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-4 sm:rounded-[1.75rem]">
           {messages.length === 0 ? (
             <p className="text-sm text-sand-500">
               Try asking about a project, a person, or what happened on a specific date.
@@ -119,9 +116,16 @@ export function ChatBox() {
             <button
               type="submit"
               disabled={status === "loading"}
-              className="inline-flex items-center justify-center rounded-full bg-sand-900 px-5 py-3 text-sm font-medium text-white transition hover:bg-sand-800 disabled:cursor-not-allowed disabled:opacity-60"
+              className="group inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 px-6 py-2.5 text-sm font-semibold text-white shadow-[0_8px_24px_-8px_rgba(99,102,241,0.6)] ring-1 ring-inset ring-white/15 transition-all hover:from-indigo-400 hover:to-violet-400 hover:shadow-[0_10px_28px_-6px_rgba(99,102,241,0.7)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 disabled:shadow-none"
             >
-              {status === "loading" ? "Thinking..." : "Ask"}
+              {status === "loading" ? (
+                <>
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                  Thinking
+                </>
+              ) : (
+                "Ask"
+              )}
             </button>
           </div>
         </form>

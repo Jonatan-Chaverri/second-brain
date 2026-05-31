@@ -7,7 +7,7 @@ function getLinkClass(pathname: string, href: string) {
   const isActive = pathname === href;
 
   return isActive
-    ? "rounded-full bg-sand-100 px-4 py-2 text-sand-900 hover:bg-sand-200"
+    ? "rounded-full bg-indigo-500/15 px-4 py-2 text-indigo-300 ring-1 ring-inset ring-indigo-400/40 shadow-[0_0_18px_-6px_rgba(129,140,248,0.6)]"
     : "rounded-full px-4 py-2 text-sand-700 hover:bg-sand-100 hover:text-sand-900";
 }
 

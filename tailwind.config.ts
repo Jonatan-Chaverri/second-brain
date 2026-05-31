@@ -8,18 +8,21 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-sans)", "ui-sans-serif", "system-ui", "sans-serif"]
+      },
       colors: {
         sand: {
-          50: "#fbf8f1",
-          100: "#f3ede1",
-          200: "#eadfc8",
-          300: "#dbc9a0",
-          400: "#c9ab6f",
-          500: "#bc9153",
-          600: "#a67846",
-          700: "#875d3c",
-          800: "#6f4d35",
-          900: "#5b412f"
+          50: "#0a0a0d",
+          100: "#131318",
+          200: "#1f1f27",
+          300: "#2b2b35",
+          400: "#3d3d4a",
+          500: "#8a8a99",
+          600: "#aeaebb",
+          700: "#cacad4",
+          800: "#e2e2e8",
+          900: "#f4f4f7"
         }
       }
     }

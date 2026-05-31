@@ -3,23 +3,70 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 body {
   @apply min-h-screen bg-sand-50 text-sand-900 antialiased;
+  background-color: #07070a;
   background-image:
-    radial-gradient(circle at top left, rgba(201, 171, 111, 0.18), transparent 24rem),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 248, 241, 0.98));
+    radial-gradient(circle at 15% 0%, rgba(99, 102, 241, 0.18), transparent 38rem),
+    radial-gradient(circle at 85% 100%, rgba(244, 114, 182, 0.10), transparent 36rem),
+    linear-gradient(180deg, #0a0a0f 0%, #07070a 100%);
+  background-attachment: fixed;
+  font-feature-settings: "ss01", "cv11";
 }
 
 a {
   @apply transition-colors;
 }
 
+::selection {
+  background: rgba(244, 244, 247, 0.18);
+  color: #f4f4f7;
+}
+
+/* Re-target the few `bg-white*` literals so they become elevated dark surfaces */
+@layer utilities {
+  .bg-white {
+    background-color: #15151c;
+  }
+
+  .bg-white\/80 {
+    background-color: rgba(18, 18, 24, 0.7);
+    backdrop-filter: saturate(1.4) blur(8px);
+  }
+
+  .bg-white\/85 {
+    background-color: rgba(18, 18, 24, 0.75);
+    backdrop-filter: saturate(1.4) blur(8px);
+  }
+
+  .bg-white\/90 {
+    background-color: rgba(18, 18, 24, 0.85);
+    backdrop-filter: saturate(1.4) blur(8px);
+  }
+
+  .focus\:bg-white:focus {
+    background-color: #1c1c24;
+  }
+
+  /* Buttons / accent chips that combine bg-sand-900 with text-white become
+     light pills with dark text on the dark theme. Selector matches elements
+     carrying both classes, leaving plain text-sand-900 headings unaffected. */
+  .bg-sand-900.text-white {
+    background-color: #f4f4f7;
+    color: #0a0a0d;
+  }
+
+  .hover\:bg-sand-800.text-white:hover {
+    background-color: #d8d8e0;
+  }
+}
+
 .journal-textarea {
   scrollbar-width: thin;
-  scrollbar-color: rgba(120, 92, 47, 0.45) transparent;
+  scrollbar-color: rgba(244, 244, 247, 0.28) transparent;
 }
 
 .journal-textarea::-webkit-scrollbar {
@@ -32,12 +79,12 @@ a {
 }
 
 .journal-textarea::-webkit-scrollbar-thumb {
-  background-color: rgba(120, 92, 47, 0.45);
+  background-color: rgba(244, 244, 247, 0.28);
   border-radius: 9999px;
   border: 2px solid transparent;
   background-clip: padding-box;
 }
 
 .journal-textarea::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(120, 92, 47, 0.7);
+  background-color: rgba(244, 244, 247, 0.5);
 }

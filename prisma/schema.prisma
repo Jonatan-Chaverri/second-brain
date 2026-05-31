@@ -46,6 +46,7 @@ model User {
   aliases   EntityAlias[]
   tags      Tag[]
   insights  UserInsight[]
+  aiUsages  AiUsage[]
 
   @@map("users")
 }
@@ -191,4 +192,21 @@ model UserInsight {
   @@index([userId, category])
   @@index([journalEntryId])
   @@map("user_insights")
+}
+
+model AiUsage {
+  id           String   @id @default(cuid())
+  userId       String
+  yearMonth    String
+  model        String
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  requestCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, yearMonth, model])
+  @@index([userId, yearMonth])
+  @@map("ai_usages")
 }

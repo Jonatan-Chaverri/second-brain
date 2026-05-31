@@ -5,6 +5,18 @@ import {
   normalizeLookupKey,
   normalizeMetadataList
 } from "@/lib/entity-normalization";
+import { recordAiUsage } from "@/lib/ai-usage-service";
+
+type OpenAiUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+};
+
+type TrackedResponseEnvelope = {
+  usage?: OpenAiUsage;
+  model?: string;
+};
 
 const insightCategories = Object.values(UserInsightCategory) as [
   UserInsightCategory,
@@ -79,7 +91,11 @@ function includesNormalizedPhrase(haystack: string, needle: string) {
   return ` ${normalizedHaystack} `.includes(` ${normalizedNeedle} `);
 }
 
-async function callOpenAi<T>(path: string, body: Record<string, unknown>) {
+async function callOpenAi<T>(
+  path: string,
+  body: Record<string, unknown>,
+  tracking?: { userId?: string; model: string }
+) {
   const response = await fetch(`https://api.openai.com/v1/${path}`, {
     method: "POST",
     headers: {
@@ -94,23 +110,36 @@ async function callOpenAi<T>(path: string, body: Record<string, unknown>) {
     throw new OpenAiProcessingError(`OpenAI request failed: ${response.status} ${details}`);
   }
 
-  return (await response.json()) as T;
+  const json = (await response.json()) as T & TrackedResponseEnvelope;
+
+  if (tracking?.userId) {
+    await recordAiUsage({
+      userId: tracking.userId,
+      model: json.model ?? tracking.model,
+      inputTokens: json.usage?.prompt_tokens ?? 0,
+      outputTokens: json.usage?.completion_tokens ?? 0
+    });
+  }
+
+  return json;
 }
 
-async function summarizeJournalEntry(rawText: string) {
+async function summarizeJournalEntry(rawText: string, userId?: string) {
   const payload = await callOpenAi<{
     choices?: Array<{
       message?: {
         content?: string | null;
       };
     }>;
-  }>("chat/completions", {
-    model: serverEnv.openAiSummaryModel,
-    temperature: 0.15,
-    response_format: {
-      type: "json_object"
-    },
-    messages: [
+  }>(
+    "chat/completions",
+    {
+      model: serverEnv.openAiSummaryModel,
+      temperature: 0.15,
+      response_format: {
+        type: "json_object"
+      },
+      messages: [
       {
         role: "system",
         content:
@@ -121,6 +150,8 @@ async function summarizeJournalEntry(rawText: string) {
             "Devuelve JSON estricto con estas llaves: summary, projects, people, topics, tools, events, media, observations, emotions, action_items, lessons, ideas, experiences, work_knowledge, self_insights.",
             "summary debe ser una sola oración breve y concisa en el mismo idioma de la entrada.",
             "projects y people contienen entidades principales mencionadas en la entrada.",
+            "people SOLO debe contener individuos identificables y reales: nombres propios (Juan, María, Pedro Rojas), apodos personales del autor (mamá, papá, mi hermano, mi novia), o referencias específicas a una persona conocida del autor. NUNCA incluyas descripciones genéricas, hipotéticas, arquetipos o grupos: 'una chica guapa', 'un mae alto', 'un tipo', 'la gente', 'alguien', 'mujeres', 'hombres', 'un compañero de trabajo', 'el jefe', 'el cliente' no son personas. Si la entrada no nombra a un individuo concreto, deja people vacío.",
+            "Lo mismo para projects: solo proyectos con nombre concreto del autor; no incluyas categorías genéricas como 'mi proyecto' o 'el trabajo'.",
             "topics solo debe contener temas abstractos de alto valor, por ejemplo: trabajo, programacion, planificacion, aprendizaje o salud.",
             "tools contiene herramientas, plataformas o software.",
             "events contiene sucesos concretos o incidentes.",
@@ -146,7 +177,9 @@ async function summarizeJournalEntry(rawText: string) {
         content: `Analiza esta entrada de diario y clasifica correctamente la metadata.\n\nEntrada:\n${rawText}`
       }
     ]
-  });
+    },
+    { userId, model: serverEnv.openAiSummaryModel }
+  );
 
   const content = payload.choices?.[0]?.message?.content;
 
@@ -192,15 +225,19 @@ async function summarizeJournalEntry(rawText: string) {
   };
 }
 
-async function generateEmbedding(rawText: string) {
+async function generateEmbedding(rawText: string, userId?: string) {
   const payload = await callOpenAi<{
     data?: Array<{
       embedding?: number[];
     }>;
-  }>("embeddings", {
-    model: serverEnv.openAiEmbeddingModel,
-    input: rawText
-  });
+  }>(
+    "embeddings",
+    {
+      model: serverEnv.openAiEmbeddingModel,
+      input: rawText
+    },
+    { userId, model: serverEnv.openAiEmbeddingModel }
+  );
 
   const embedding = payload.data?.[0]?.embedding;
 
@@ -213,6 +250,7 @@ async function generateEmbedding(rawText: string) {
 
 type ChatAnswerInput = {
   message: string;
+  userId?: string;
   history?: Array<{ role: "user" | "assistant"; content: string }>;
   browserContext?: {
     localDate: string;
@@ -390,7 +428,10 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
   ];
 }
 
-async function createOpenAiChatTextStream(messages: Array<{ role: string; content: string }>) {
+async function createOpenAiChatTextStream(
+  messages: Array<{ role: string; content: string }>,
+  tracking?: { userId?: string }
+) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -401,6 +442,7 @@ async function createOpenAiChatTextStream(messages: Array<{ role: string; conten
       model: serverEnv.openAiSummaryModel,
       temperature: 0.2,
       stream: true,
+      stream_options: { include_usage: true },
       messages
     })
   });
@@ -417,6 +459,8 @@ async function createOpenAiChatTextStream(messages: Array<{ role: string; conten
   const encoder = new TextEncoder();
   const decoder = new TextDecoder();
   const reader = response.body.getReader();
+  let usage: OpenAiUsage | undefined;
+  let streamedModel: string | undefined;
 
   return new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -445,10 +489,20 @@ async function createOpenAiChatTextStream(messages: Array<{ role: string; conten
 
             if (payload === "[DONE]") {
               controller.close();
+              if (tracking?.userId) {
+                await recordAiUsage({
+                  userId: tracking.userId,
+                  model: streamedModel ?? serverEnv.openAiSummaryModel,
+                  inputTokens: usage?.prompt_tokens ?? 0,
+                  outputTokens: usage?.completion_tokens ?? 0
+                });
+              }
               return;
             }
 
             let parsed: {
+              model?: string;
+              usage?: OpenAiUsage;
               choices?: Array<{
                 delta?: {
                   content?: string;
@@ -462,6 +516,13 @@ async function createOpenAiChatTextStream(messages: Array<{ role: string; conten
               continue;
             }
 
+            if (parsed.model) {
+              streamedModel = parsed.model;
+            }
+            if (parsed.usage) {
+              usage = parsed.usage;
+            }
+
             const chunk = parsed.choices?.[0]?.delta?.content;
 
             if (chunk) {
@@ -471,6 +532,14 @@ async function createOpenAiChatTextStream(messages: Array<{ role: string; conten
         }
 
         controller.close();
+        if (tracking?.userId) {
+          await recordAiUsage({
+            userId: tracking.userId,
+            model: streamedModel ?? serverEnv.openAiSummaryModel,
+            inputTokens: usage?.prompt_tokens ?? 0,
+            outputTokens: usage?.completion_tokens ?? 0
+          });
+        }
       } catch (error) {
         controller.error(error);
       } finally {
@@ -480,7 +549,10 @@ async function createOpenAiChatTextStream(messages: Array<{ role: string; conten
   });
 }
 
-export async function analyzeJournalEntry(rawText: string): Promise<JournalAnalysis> {
+export async function analyzeJournalEntry(
+  rawText: string,
+  userId?: string
+): Promise<JournalAnalysis> {
   const trimmed = rawText.trim();
 
   if (!trimmed) {
@@ -505,8 +577,8 @@ export async function analyzeJournalEntry(rawText: string): Promise<JournalAnaly
   }
 
   const [analysis, embedding] = await Promise.all([
-    summarizeJournalEntry(trimmed),
-    generateEmbedding(trimmed)
+    summarizeJournalEntry(trimmed, userId),
+    generateEmbedding(trimmed, userId)
   ]);
 
   return {
@@ -515,14 +587,14 @@ export async function analyzeJournalEntry(rawText: string): Promise<JournalAnaly
   };
 }
 
-export async function generateQueryEmbedding(message: string) {
+export async function generateQueryEmbedding(message: string, userId?: string) {
   const trimmed = message.trim();
 
   if (!trimmed) {
     return [];
   }
 
-  return generateEmbedding(trimmed);
+  return generateEmbedding(trimmed, userId);
 }
 
 export async function answerJournalQuestion(input: ChatAnswerInput) {
@@ -534,11 +606,15 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
         content?: string | null;
       };
     }>;
-  }>("chat/completions", {
-    model: serverEnv.openAiSummaryModel,
-    temperature: 0.2,
-    messages
-  });
+  }>(
+    "chat/completions",
+    {
+      model: serverEnv.openAiSummaryModel,
+      temperature: 0.2,
+      messages
+    },
+    { userId: input.userId, model: serverEnv.openAiSummaryModel }
+  );
 
   const content = payload.choices?.[0]?.message?.content?.trim();
 
@@ -551,5 +627,5 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
 
 export async function streamJournalQuestion(input: ChatAnswerInput) {
   const messages = buildJournalChatMessages(input);
-  return createOpenAiChatTextStream(messages);
+  return createOpenAiChatTextStream(messages, { userId: input.userId });
 }

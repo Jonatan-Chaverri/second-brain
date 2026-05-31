@@ -74,7 +74,7 @@ export async function findRelevantJournalEntries(input: {
   message: string;
   limit?: number;
 }) {
-  const queryEmbedding = await generateQueryEmbedding(input.message);
+  const queryEmbedding = await generateQueryEmbedding(input.message, input.userId);
   const vectorLiteral = formatVectorLiteral(queryEmbedding);
 
   if (!vectorLiteral) {

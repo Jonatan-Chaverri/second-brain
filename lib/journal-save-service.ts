@@ -35,7 +35,7 @@ export async function saveJournalEntryForUser(input: {
 }) {
   const rawText = input.rawText.trim();
   const entryDate = normalizeEntryDate(input.entryDate);
-  const analysis = await analyzeJournalEntry(rawText);
+  const analysis = await analyzeJournalEntry(rawText, input.userId);
   const [
     normalizedProjects,
     normalizedPeople,

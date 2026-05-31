@@ -18,16 +18,40 @@ type PersonRecord = {
 
 type EditState = {
   displayName: string;
-  notes: string;
+  notes: string[];
   birthday: string;
   aliases: string;
   tags: string[];
 };
 
+function splitNotesIntoBlocks(notes: string | null | undefined): string[] {
+  if (!notes) return [""];
+  const lines = notes
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  return lines.length > 0 ? [...lines, ""] : [""];
+}
+
+function mergeNoteBlocks(blocks: string[]): string {
+  return blocks
+    .map((block) => block.trim())
+    .filter((block) => block.length > 0)
+    .join("\n");
+}
+
+function normalizeNoteBlocks(nextBlocks: string[]): string[] {
+  const nonEmpty = nextBlocks
+    .map((block) => block.replace(/\r\n/g, "\n"))
+    .filter((block) => block.trim().length > 0);
+  return [...nonEmpty, ""];
+}
+
 function toEditState(person: PersonRecord): EditState {
   return {
     displayName: person.displayName,
-    notes: person.notes ?? "",
+    notes: splitNotesIntoBlocks(person.notes),
     birthday: person.birthday ?? "",
     aliases: person.aliases.join(", "),
     tags: [...person.tags]
@@ -49,6 +73,64 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
   const [status, setStatus] = useState<"idle" | "saving" | "deleting">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [canonicalName] = useState(person.canonicalName);
+  const noteBlockRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
+
+  function autosizeTextarea(textarea: HTMLTextAreaElement | null) {
+    if (!textarea) return;
+    const maxHeight = 96; // 4 lines * 24px (leading-6)
+    textarea.style.height = "0px";
+    const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
+    textarea.style.height = `${nextHeight}px`;
+    textarea.style.overflowY = textarea.scrollHeight > maxHeight ? "auto" : "hidden";
+  }
+
+  useEffect(() => {
+    noteBlockRefs.current.forEach((textarea) => autosizeTextarea(textarea));
+  }, [editState.notes]);
+
+  function focusNoteBlock(index: number) {
+    window.requestAnimationFrame(() => {
+      const node = noteBlockRefs.current[index];
+      node?.focus();
+      node?.setSelectionRange(node.value.length, node.value.length);
+    });
+  }
+
+  function updateNoteBlock(index: number, value: string) {
+    const normalized = value.replace(/\r\n/g, "\n");
+
+    if (!normalized.includes("\n")) {
+      setEditState((current) => {
+        const next = [...current.notes];
+        next[index] = normalized;
+        return { ...current, notes: normalizeNoteBlocks(next) };
+      });
+      return;
+    }
+
+    const splitValues = normalized.split("\n").map((line) => line.trim());
+    setEditState((current) => {
+      const next = [...current.notes];
+      const [first, ...rest] = splitValues;
+      next[index] = first ?? "";
+      next.splice(index + 1, 0, ...rest);
+      return { ...current, notes: normalizeNoteBlocks(next) };
+    });
+
+    focusNoteBlock(index + Math.max(splitValues.length - 1, 1));
+  }
+
+  function removeNoteBlock(index: number) {
+    setEditState((current) => {
+      if (current.notes.length <= 1) {
+        return { ...current, notes: [""] };
+      }
+      const next = [...current.notes];
+      next.splice(index, 1);
+      return { ...current, notes: normalizeNoteBlocks(next) };
+    });
+    focusNoteBlock(Math.max(index - 1, 0));
+  }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,6 +143,7 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
       .filter(Boolean);
 
     const tagList = editState.tags.map((tag) => tag.trim()).filter(Boolean);
+    const mergedNotes = mergeNoteBlocks(editState.notes);
 
     try {
       const response = await fetch(`/api/people/${person.id}`, {
@@ -68,7 +151,7 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           displayName: editState.displayName,
-          notes: editState.notes.trim() ? editState.notes : null,
+          notes: mergedNotes.length > 0 ? mergedNotes : null,
           birthday: editState.birthday ? editState.birthday : null,
           aliases: aliasList,
           tags: tagList
@@ -152,19 +235,6 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
             />
           </label>
 
-          <label className="grid gap-2 text-sm text-sand-700">
-            <span>Notes</span>
-            <textarea
-              value={editState.notes}
-              onChange={(event) =>
-                setEditState((current) => ({ ...current, notes: event.target.value }))
-              }
-              rows={8}
-              placeholder="Anything you want the model to remember about this person (relationship, context, preferences, etc.)"
-              className="rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
-            />
-          </label>
-
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm text-sand-700">
               <span>Birthday (optional)</span>
@@ -191,7 +261,7 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
             </label>
           </div>
 
-          <label className="grid gap-2 text-sm text-sand-700">
+          <div className="grid gap-2 text-sm text-sand-700">
             <span>Tags</span>
             <TagInput
               value={editState.tags}
@@ -201,7 +271,52 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
               Pick from your existing tags or type a new one and press Enter. The chat can filter
               by tag (e.g. ask about “family members”).
             </span>
-          </label>
+          </div>
+
+          <div className="grid gap-2 text-sm text-sand-700">
+            <span>Notes</span>
+            <div className="flex max-h-80 flex-col gap-2 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-2.5 sm:p-3">
+              {editState.notes.map((block, index) => (
+                <div
+                  key={`note-block-${index}`}
+                  className="flex items-start gap-3 rounded-xl border border-sand-200/80 bg-white/90 px-3 py-2 shadow-sm shadow-sand-900/5 transition-colors focus-within:border-indigo-300 focus-within:ring-1 focus-within:ring-indigo-300/50"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-2 h-1.5 w-1.5 flex-none rounded-full bg-indigo-400"
+                  />
+                  <textarea
+                    ref={(node) => {
+                      noteBlockRefs.current[index] = node;
+                      autosizeTextarea(node);
+                    }}
+                    value={block}
+                    onChange={(event) => {
+                      updateNoteBlock(index, event.target.value);
+                      autosizeTextarea(event.currentTarget);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        focusNoteBlock(Math.min(index + 1, editState.notes.length - 1));
+                      }
+                      if (event.key === "Backspace" && block.length === 0) {
+                        event.preventDefault();
+                        removeNoteBlock(index);
+                      }
+                    }}
+                    placeholder={
+                      index === 0
+                        ? "Add a note and press Enter to create the next block."
+                        : "New block"
+                    }
+                    rows={1}
+                    className="w-full resize-none bg-transparent text-sm leading-6 text-sand-900 outline-none placeholder:text-sand-500"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
 
           <p className="text-sm text-red-700">{errorMessage ?? "\u00a0"}</p>
 

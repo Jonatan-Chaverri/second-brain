@@ -44,6 +44,7 @@ export async function POST(request: Request) {
 
     const answerStream = await streamJournalQuestion({
       message: parsed.data.message,
+      userId: dbUser.id,
       history: parsed.data.history,
       browserContext: parsed.data.browserContext,
       peopleDirectory: context.peopleDirectory,

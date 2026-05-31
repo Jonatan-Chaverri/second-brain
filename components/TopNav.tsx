@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 type NavLink = {
-  href: "/journal" | "/chat" | "/people" | "/aliases";
+  href: "/journal" | "/chat" | "/people" | "/aliases" | "/settings";
   label: string;
   icon: ReactNode;
 };
@@ -73,6 +74,16 @@ const navLinks: NavLink[] = [
         <path d="m18 9 3 3-3 3" />
       </Icon>
     )
+  },
+  {
+    href: "/settings",
+    label: "Settings",
+    icon: (
+      <Icon>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.03-1.56V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9c.17.41.26.85.27 1.3" />
+      </Icon>
+    )
   }
 ];
 
@@ -95,7 +106,13 @@ function getMobileLinkClass(pathname: string, href: string) {
 export function TopNav() {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     setIsOpen(false);
@@ -106,9 +123,10 @@ export function TopNav() {
 
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node | null;
-      if (target && headerRef.current && !headerRef.current.contains(target)) {
-        setIsOpen(false);
-      }
+      if (!target) return;
+      if (headerRef.current && headerRef.current.contains(target)) return;
+      if (sidebarRef.current && sidebarRef.current.contains(target)) return;
+      setIsOpen(false);
     }
 
     function handleKeyDown(event: KeyboardEvent) {
@@ -124,7 +142,7 @@ export function TopNav() {
   }, [isOpen]);
 
   return (
-    <header ref={headerRef} className="relative z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
+    <header ref={headerRef} className="sticky top-0 z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
         <button
           type="button"
@@ -178,20 +196,64 @@ export function TopNav() {
         </form>
       </div>
 
-      {isOpen ? (
-        <nav className="absolute inset-x-3 top-full z-40 mt-2 rounded-2xl border-2 border-sand-400 bg-white px-4 py-3 shadow-xl shadow-sand-900/20 ring-1 ring-sand-900/5 sm:hidden">
-          <ul className="flex flex-col gap-1 text-sm font-medium">
-            {navLinks.map((link) => (
-              <li key={link.href}>
-                <Link href={link.href} className={getMobileLinkClass(pathname, link.href)}>
-                  {link.icon}
-                  {link.label}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </nav>
-      ) : null}
+      {mounted && isOpen
+        ? createPortal(
+            <div className="sm:hidden">
+              <div
+                className="fixed inset-0 z-[60] bg-sand-900/40 backdrop-blur-sm"
+                aria-hidden
+                onClick={() => setIsOpen(false)}
+              />
+              <aside
+                ref={sidebarRef}
+                role="dialog"
+                aria-label="Navigation"
+                aria-modal="true"
+                className="fixed inset-y-0 left-0 z-[70] flex w-72 max-w-[80%] flex-col border-r border-sand-200 bg-white shadow-2xl shadow-sand-900/20"
+              >
+            <div className="flex items-center justify-between border-b border-sand-200 px-4 py-4">
+              <span className="text-sm font-semibold uppercase tracking-wide text-sand-500">
+                Second Brain
+              </span>
+              <button
+                type="button"
+                aria-label="Close navigation"
+                onClick={() => setIsOpen(false)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-sand-200 text-sand-700 hover:border-sand-300 hover:text-sand-900"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-4 w-4"
+                  aria-hidden
+                >
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="6" y1="18" x2="18" y2="6" />
+                </svg>
+              </button>
+            </div>
+            <nav className="flex-1 overflow-y-auto px-3 py-4">
+              <ul className="flex flex-col gap-1 text-sm font-medium">
+                {navLinks.map((link) => (
+                  <li key={link.href}>
+                    <Link href={link.href} className={getMobileLinkClass(pathname, link.href)}>
+                      {link.icon}
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+              </aside>
+            </div>,
+            document.body
+          )
+        : null}
     </header>
   );
 }

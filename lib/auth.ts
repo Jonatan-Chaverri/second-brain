@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { User } from "@supabase/supabase-js";
 import { prisma } from "@/lib/prisma";
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createReadOnlyClient } from "@/lib/supabase/server";
 import { isOwnerEmail } from "@/lib/owner";
 
 function getUserEmail(user: User | null) {
@@ -9,7 +9,7 @@ function getUserEmail(user: User | null) {
 }
 
 export async function getOptionalOwnerSession() {
-  const supabase = await createClient();
+  const supabase = await createReadOnlyClient();
   const {
     data: { session }
   } = await supabase.auth.getSession();
@@ -22,7 +22,7 @@ export async function getOptionalOwnerSession() {
 }
 
 export async function requireOwnerPageSession() {
-  const supabase = await createClient();
+  const supabase = await createReadOnlyClient();
   const {
     data: { user }
   } = await supabase.auth.getUser();
@@ -32,7 +32,6 @@ export async function requireOwnerPageSession() {
   }
 
   if (!isOwnerEmail(getUserEmail(user))) {
-    await supabase.auth.signOut();
     redirect("/login?error=unauthorized");
   }
 

@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireOwnerApiUser, syncOwnerUser } from "@/lib/auth";
-import { normalizeEntryDate, serializeJournalEntry } from "@/lib/journal-entry";
+import {
+  journalEntryWithRelationsInclude,
+  normalizeEntryDate,
+  serializeJournalEntry
+} from "@/lib/journal-entry";
 import { prisma } from "@/lib/prisma";
+import { getJournalEntryEmbeddingDimensions } from "@/lib/vector";
 
 const querySchema = z.object({
   entryDate: z.string().date().optional()
@@ -27,11 +32,16 @@ export async function GET(request: Request) {
           userId: dbUser.id,
           entryDate
         }
-      }
+      },
+      include: journalEntryWithRelationsInclude
     });
 
+    const embeddingDimensions = entry
+      ? await getJournalEntryEmbeddingDimensions(entry.id)
+      : null;
+
     return NextResponse.json({
-      entry: entry ? serializeJournalEntry(entry) : null
+      entry: entry ? serializeJournalEntry(entry, { embeddingDimensions }) : null
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {

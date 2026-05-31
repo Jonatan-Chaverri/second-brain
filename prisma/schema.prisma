@@ -8,30 +8,124 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+enum EntityAliasType {
+  project
+  person
+  topic
+  tool
+  event
+  media
+  observation
+  emotion
+}
+
 model User {
-  id        String         @id @default(cuid())
-  email     String         @unique
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  id        String        @id @default(cuid())
+  email     String        @unique
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
   entries   JournalEntry[]
+  projects  Project[]
+  people    Person[]
+  aliases   EntityAlias[]
+
+  @@map("users")
 }
 
 model JournalEntry {
-  id          String   @id @default(cuid())
-  userId      String
-  entryDate   DateTime
-  rawText     String
-  summary     String?
-  topics      Json?
-  people      Json?
-  projects    Json?
-  emotions    Json?
-  actionItems Json?
-  embedding   Float[]  @default([])
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String                @id @default(cuid())
+  userId        String
+  entryDate     DateTime
+  rawText       String
+  summary       String?
+  topics        Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  tools         Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  events        Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  media         Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  observations  Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  emotions      Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  actionItems   Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  lessons       Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  ideas         Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  experiences   Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  workKnowledge Json                  @default(dbgenerated("'[]'::jsonb")) @db.JsonB
+  embedding     Unsupported("vector")?
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+  user          User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  entryProjects JournalEntryProject[]
+  entryPeople   JournalEntryPerson[]
 
   @@unique([userId, entryDate])
+  @@index([userId])
   @@index([entryDate])
+  @@map("journal_entries")
+}
+
+model Project {
+  id             String                @id @default(cuid())
+  userId         String
+  canonicalName  String
+  displayName    String
+  description    String?
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  user           User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  journalEntries JournalEntryProject[]
+
+  @@unique([userId, canonicalName])
+  @@map("projects")
+}
+
+model Person {
+  id             String               @id @default(cuid())
+  userId         String
+  canonicalName  String
+  displayName    String
+  notes          String?
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  journalEntries JournalEntryPerson[]
+
+  @@unique([userId, canonicalName])
+  @@map("people")
+}
+
+model EntityAlias {
+  id            String          @id @default(cuid())
+  userId        String
+  entityType    EntityAliasType
+  alias         String
+  canonicalName String
+  displayName   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, entityType, alias])
+  @@index([userId])
+  @@index([entityType])
+  @@index([canonicalName])
+  @@map("entity_aliases")
+}
+
+model JournalEntryProject {
+  journalEntryId String
+  projectId      String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@id([journalEntryId, projectId])
+  @@map("journal_entry_projects")
+}
+
+model JournalEntryPerson {
+  journalEntryId String
+  personId       String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  person         Person       @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([journalEntryId, personId])
+  @@map("journal_entry_people")
 }

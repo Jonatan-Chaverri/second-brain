@@ -1,9 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireOwnerApiUser, syncOwnerUser } from "@/lib/auth";
-import { normalizeEntryDate, serializeJournalEntry } from "@/lib/journal-entry";
-import { analyzeJournalEntry, OpenAiProcessingError } from "@/lib/openai";
-import { prisma } from "@/lib/prisma";
+import { saveJournalEntryForUser } from "@/lib/journal-save-service";
+import { OpenAiProcessingError } from "@/lib/openai";
 
 const saveSchema = z.object({
   rawText: z.string().trim().max(50_000),
@@ -21,41 +20,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
     }
 
-    const aiAnalysis = await analyzeJournalEntry(parsed.data.rawText);
-    const entryDate = normalizeEntryDate(parsed.data.entryDate);
-    const entry = await prisma.journalEntry.upsert({
-      where: {
-        userId_entryDate: {
-          userId: dbUser.id,
-          entryDate
-        }
-      },
-      create: {
-        userId: dbUser.id,
-        entryDate,
-        rawText: parsed.data.rawText,
-        summary: aiAnalysis.summary,
-        topics: aiAnalysis.topics,
-        people: aiAnalysis.people,
-        projects: aiAnalysis.projects,
-        emotions: aiAnalysis.emotions,
-        actionItems: aiAnalysis.actionItems,
-        embedding: aiAnalysis.embedding
-      },
-      update: {
-        rawText: parsed.data.rawText,
-        summary: aiAnalysis.summary,
-        topics: aiAnalysis.topics,
-        people: aiAnalysis.people,
-        projects: aiAnalysis.projects,
-        emotions: aiAnalysis.emotions,
-        actionItems: aiAnalysis.actionItems,
-        embedding: aiAnalysis.embedding
-      }
+    const result = await saveJournalEntryForUser({
+      userId: dbUser.id,
+      rawText: parsed.data.rawText,
+      entryDate: parsed.data.entryDate
     });
 
     return NextResponse.json({
-      entry: serializeJournalEntry(entry)
+      entry: result.entry
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {

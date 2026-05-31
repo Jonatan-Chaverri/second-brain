@@ -28,7 +28,7 @@ Over time, the app is intended to support:
 
 ## Current Status
 
-Phases 1, 2, and 3 are currently implemented:
+Phases 1, 2, 3, 4, and 6 are currently implemented:
 
 - owner-only authentication with Supabase Auth
 - protected app routes
@@ -38,12 +38,12 @@ Phases 1, 2, and 3 are currently implemented:
 - Prisma schema for users and note entries
 - server-side API routes for loading and saving entries
 - server-side OpenAI summarization and embedding generation on save
+- pgvector-based retrieval and a server-side chat API over journal context
+- normalized database schema verified against the live Supabase database
+- Spanish-first metadata extraction with separated projects, people, topics, tools, events, media, and observations
 
 Not implemented yet:
-
-- vector search
-- chat
-- pgvector-specific retrieval features
+- no major planned phases remain in the current scope
 
 ## Tech Stack
 
@@ -94,6 +94,12 @@ npm run prisma:migrate
 
 ```bash
 npm run dev
+```
+
+Optional one-time metadata migration to Spanish categories:
+
+```bash
+npm run migrate:metadata:es
 ```
 
 ## Environment Variables

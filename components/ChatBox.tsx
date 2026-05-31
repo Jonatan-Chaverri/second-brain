@@ -5,10 +5,15 @@ import { useState } from "react";
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
+  entriesUsed?: number;
 };
 
 type ChatApiResponse = {
   answer: string;
+  context?: {
+    hasEnoughContext: boolean;
+    entries: Array<unknown>;
+  };
 };
 
 export function ChatBox() {
@@ -56,7 +61,8 @@ export function ChatBox() {
         ...nextMessages,
         {
           role: "assistant",
-          content: data.answer
+          content: data.answer,
+          entriesUsed: data.context?.entries?.length ?? 0
         }
       ]);
       setStatus("idle");
@@ -87,11 +93,32 @@ export function ChatBox() {
               key={`${entry.role}-${index}`}
               className={
                 entry.role === "user"
-                  ? "ml-auto max-w-[85%] rounded-3xl bg-sand-900 px-4 py-3 text-sm text-white"
-                  : "mr-auto max-w-[85%] rounded-3xl bg-white px-4 py-3 text-sm text-sand-800 shadow-sm"
+                  ? "ml-auto flex max-w-[85%] flex-col items-end gap-1"
+                  : "mr-auto flex max-w-[85%] flex-col items-start gap-1"
               }
             >
-              {entry.content}
+              <div
+                className={
+                  entry.role === "user"
+                    ? "rounded-3xl bg-sand-900 px-4 py-3 text-sm text-white"
+                    : "rounded-3xl bg-white px-4 py-3 text-sm text-sand-800 shadow-sm"
+                }
+              >
+                {entry.content}
+              </div>
+              {entry.role === "assistant" && entry.entriesUsed !== undefined ? (
+                <span
+                  className={
+                    entry.entriesUsed > 0
+                      ? "rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-300 ring-1 ring-inset ring-indigo-400/30"
+                      : "rounded-full bg-sand-200/40 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sand-500 ring-1 ring-inset ring-sand-300/40"
+                  }
+                >
+                  {entry.entriesUsed > 0
+                    ? `Basado en ${entry.entriesUsed} ${entry.entriesUsed === 1 ? "entrada" : "entradas"}`
+                    : "Sin contexto del diario"}
+                </span>
+              ) : null}
             </div>
           ))}
         </div>

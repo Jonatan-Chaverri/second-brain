@@ -137,8 +137,11 @@ export async function buildChatContext(input: {
   userId: string;
   message: string;
   limit?: number;
+  minSimilarity?: number;
 }) {
-  const entries = await findRelevantJournalEntries(input);
+  const minSimilarity = input.minSimilarity ?? 0.3;
+  const all = await findRelevantJournalEntries(input);
+  const entries = all.filter((entry) => entry.similarity >= minSimilarity);
 
   return {
     entries,

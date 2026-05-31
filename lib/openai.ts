@@ -269,7 +269,21 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
             ].join("\n")
           )
           .join("\n\n")
-      : "No se encontró contexto relevante en el diario.";
+      : "";
+
+  const hasContext = input.contextBlocks.length > 0;
+
+  const systemPrompt = [
+    "Eres el asistente personal de un diario privado (\"segundo cerebro\").",
+    "Si el usuario hace una pregunta sobre su vida, trabajo, proyectos, personas o cualquier cosa que esté o pueda estar en el diario, usa únicamente el contexto del diario proporcionado y menciona fechas cuando estén disponibles. No inventes detalles. Si el contexto es insuficiente, dilo claramente.",
+    "Si el usuario solo saluda (\"hola\", \"qué tal\"), agradece, hace charla casual, o pregunta sobre ti o tus capacidades, responde de forma natural y breve sin mencionar el diario salvo que pregunte por él. NO resumas ni listes entradas del diario en respuestas casuales.",
+    "Si no se proporciona contexto del diario, asume que la pregunta no requiere consultar el diario y responde de forma conversacional.",
+    "Responde siempre en español. Mantén coherencia con los turnos previos de la conversación."
+  ].join(" ");
+
+  const userContent = hasContext
+    ? `Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
+    : `Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
 
   const historyMessages = (input.history ?? [])
     .filter((turn) => turn.content.trim().length > 0)
@@ -287,13 +301,12 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
     messages: [
       {
         role: "system",
-        content:
-          "Responde siempre en español usando solo el contexto del diario proporcionado. No inventes detalles. Si el contexto es insuficiente, dilo claramente. Menciona fechas cuando estén disponibles. Mantén la coherencia con los turnos previos de la conversación."
+        content: systemPrompt
       },
       ...historyMessages,
       {
         role: "user",
-        content: `Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
+        content: userContent
       }
     ]
   });

@@ -28,6 +28,7 @@ model User {
   projects  Project[]
   people    Person[]
   aliases   EntityAlias[]
+  tags      Tag[]
 
   @@map("users")
 }
@@ -82,13 +83,42 @@ model Person {
   userId         String
   canonicalName  String
   displayName    String
+  notes          String?
+  birthday       DateTime?            @db.Date
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
   user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   journalEntries JournalEntryPerson[]
+  tags           PersonTag[]
 
   @@unique([userId, canonicalName])
   @@map("people")
+}
+
+model Tag {
+  id            String      @id @default(cuid())
+  userId        String
+  canonicalName String
+  displayName   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  people        PersonTag[]
+
+  @@unique([userId, canonicalName])
+  @@index([userId])
+  @@map("tags")
+}
+
+model PersonTag {
+  personId String
+  tagId    String
+  person   Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  tag      Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([personId, tagId])
+  @@index([tagId])
+  @@map("person_tags")
 }
 
 model EntityAlias {

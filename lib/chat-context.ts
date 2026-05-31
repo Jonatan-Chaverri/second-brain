@@ -1,6 +1,12 @@
-import { Prisma } from "@prisma/client";
+import { EntityAliasType, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { generateQueryEmbedding } from "@/lib/openai";
+import { normalizeLookupKey } from "@/lib/entity-normalization";
+import {
+  findPersonCanonicalNamesByTagLabels,
+  getPersonDirectoryForCanonicalNames,
+  PersonDirectoryEntry
+} from "@/lib/people-service";
 import { formatVectorLiteral } from "@/lib/vector";
 
 type SimilarJournalEntryRow = {
@@ -43,6 +49,7 @@ const journalEntryChatInclude = {
     include: {
       person: {
         select: {
+          canonicalName: true,
           displayName: true
         }
       }
@@ -143,8 +150,126 @@ export async function buildChatContext(input: {
   const all = await findRelevantJournalEntries(input);
   const entries = all.filter((entry) => entry.similarity >= minSimilarity);
 
+  const referencedCanonicalNames = await getCanonicalNamesForEntries(
+    entries.map((entry) => entry.entryId)
+  );
+
+  const messageMentionedCanonicalNames = await findPersonCanonicalNamesMentionedInMessage(
+    input.userId,
+    input.message
+  );
+
+  const tagMentionedCanonicalNames = await findPersonCanonicalNamesByTagMentions(
+    input.userId,
+    input.message
+  );
+
+  const allCanonicalNames = Array.from(
+    new Set([
+      ...referencedCanonicalNames,
+      ...messageMentionedCanonicalNames,
+      ...tagMentionedCanonicalNames
+    ])
+  );
+
+  const peopleDirectory = await getPersonDirectoryForCanonicalNames(
+    input.userId,
+    allCanonicalNames
+  );
+
   return {
     entries,
-    hasEnoughContext: entries.length > 0
+    peopleDirectory,
+    hasEnoughContext: entries.length > 0 || peopleDirectory.length > 0
   };
 }
+
+async function findPersonCanonicalNamesByTagMentions(
+  userId: string,
+  message: string
+): Promise<string[]> {
+  const normalizedMessage = ` ${normalizeLookupKey(message)} `;
+
+  if (normalizedMessage.trim().length === 0) {
+    return [];
+  }
+
+  const tags = await prisma.tag.findMany({
+    where: { userId },
+    select: { canonicalName: true, displayName: true }
+  });
+
+  const matchedLabels: string[] = [];
+
+  for (const tag of tags) {
+    const needle = normalizeLookupKey(tag.displayName);
+    if (needle && normalizedMessage.includes(` ${needle} `)) {
+      matchedLabels.push(tag.displayName);
+    }
+  }
+
+  if (matchedLabels.length === 0) {
+    return [];
+  }
+
+  return findPersonCanonicalNamesByTagLabels(userId, matchedLabels);
+}
+
+async function findPersonCanonicalNamesMentionedInMessage(
+  userId: string,
+  message: string
+): Promise<string[]> {
+  const normalizedMessage = ` ${normalizeLookupKey(message)} `;
+
+  if (normalizedMessage.trim().length === 0) {
+    return [];
+  }
+
+  const [people, aliases] = await Promise.all([
+    prisma.person.findMany({
+      where: { userId },
+      select: { canonicalName: true, displayName: true }
+    }),
+    prisma.entityAlias.findMany({
+      where: { userId, entityType: EntityAliasType.person },
+      select: { alias: true, canonicalName: true }
+    })
+  ]);
+
+  const matches = new Set<string>();
+
+  for (const person of people) {
+    const needle = normalizeLookupKey(person.displayName);
+    if (needle && normalizedMessage.includes(` ${needle} `)) {
+      matches.add(person.canonicalName);
+    }
+  }
+
+  for (const alias of aliases) {
+    const needle = normalizeLookupKey(alias.alias);
+    if (needle && normalizedMessage.includes(` ${needle} `)) {
+      matches.add(alias.canonicalName);
+    }
+  }
+
+  return Array.from(matches);
+}
+
+async function getCanonicalNamesForEntries(entryIds: string[]): Promise<string[]> {
+  if (entryIds.length === 0) {
+    return [];
+  }
+
+  const rows = await prisma.journalEntryPerson.findMany({
+    where: { journalEntryId: { in: entryIds } },
+    select: {
+      person: {
+        select: { canonicalName: true }
+      }
+    }
+  });
+
+  return Array.from(new Set(rows.map((row) => row.person.canonicalName)));
+}
+
+export type { PersonDirectoryEntry };

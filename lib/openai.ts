@@ -193,6 +193,13 @@ type ChatAnswerInput = {
     timeZone: string;
     utcOffset: string;
   };
+  peopleDirectory?: Array<{
+    displayName: string;
+    notes: string | null;
+    birthday: string | null;
+    aliases: string[];
+    tags: string[];
+  }>;
   contextBlocks: Array<{
     entryDate: string;
     summary: string | null;
@@ -224,8 +231,8 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
   // Token-saving rules:
   // - Only include rawText for highly relevant blocks (or when no summary exists).
   // - Always include rawText when the user explicitly asks about a tracked person/project
-  //   present in the block, otherwise we can lose relationship details like
-  //   "Valeria es mi novia".
+  //   present in the block, otherwise we can lose relationship details (e.g. how this
+  //   person relates to the author).
   // - Skip empty metadata lines entirely.
   // - Mark blocks with a similarity score so we can decide what to expand.
   const RAW_TEXT_SIMILARITY_THRESHOLD = 0.6;
@@ -277,18 +284,39 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
     ? `Fecha local del usuario: ${input.browserContext.localDate} ${input.browserContext.localTime} (zona horaria ${input.browserContext.timeZone}, UTC${input.browserContext.utcOffset})`
     : null;
 
+  const peopleDirectoryText =
+    input.peopleDirectory && input.peopleDirectory.length > 0
+      ? input.peopleDirectory
+          .map((person) => {
+            const lines: Array<string | null> = [
+              `- ${person.displayName}`,
+              person.aliases.length > 0 ? `  Alias: ${person.aliases.join(", ")}` : null,
+              person.tags.length > 0 ? `  Tags: ${person.tags.join(", ")}` : null,
+              person.birthday ? `  Cumpleaños: ${person.birthday}` : null,
+              person.notes ? `  Notas: ${person.notes}` : null
+            ];
+            return lines.filter((line): line is string => line !== null).join("\n");
+          })
+          .join("\n")
+      : null;
+
   const systemPrompt = [
     'Eres el asistente personal de un diario privado ("segundo cerebro").',
     "Cuando el usuario pregunte por hoy, ayer, mañana o esta semana, usa la fecha local del usuario proporcionada en el contexto temporal; no asumas UTC ni hora del servidor.",
+    "Cuando exista un Directorio de personas, trátalo como datos confiables provistos por el usuario sobre esas personas (notas, cumpleaños, alias, tags). Úsalo libremente para responder preguntas sobre ellas, incluso si no aparecen en las entradas recuperadas. Si el usuario pregunta por un grupo descrito por un tag (por ejemplo, \"familia\", \"amigos\", \"colegas\"), responde listando las personas del directorio cuyos tags coincidan.",
     "Si el usuario hace una pregunta sobre su vida, trabajo, proyectos, personas o cualquier cosa que esté o pueda estar en el diario, usa únicamente el contexto del diario proporcionado y menciona fechas cuando estén disponibles. No inventes detalles. Si el contexto es insuficiente, dilo claramente.",
     'Si el usuario solo saluda ("hola", "qué tal"), agradece, hace charla casual, o pregunta sobre ti o tus capacidades, responde de forma natural y breve sin mencionar el diario salvo que pregunte por él. NO resumas ni listes entradas del diario en respuestas casuales.',
     "Si no se proporciona contexto del diario, asume que la pregunta no requiere consultar el diario y responde de forma conversacional.",
     "Responde siempre en español. Mantén coherencia con los turnos previos de la conversación."
   ].join(" ");
 
+  const directorySection = peopleDirectoryText
+    ? `Directorio de personas:\n${peopleDirectoryText}\n\n`
+    : "";
+
   const userContent = hasContext
-    ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
-    : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
+    ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`
+    : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
 
   // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
   const HISTORY_TURN_LIMIT = 6;

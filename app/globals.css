@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply min-h-screen bg-sand-50 text-sand-900 antialiased;
+  background-image:
+    radial-gradient(circle at top left, rgba(201, 171, 111, 0.18), transparent 24rem),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(251, 248, 241, 0.98));
+}
+
+a {
+  @apply transition-colors;
+}

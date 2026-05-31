@@ -16,3 +16,28 @@ body {
 a {
   @apply transition-colors;
 }
+
+.journal-textarea {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(120, 92, 47, 0.45) transparent;
+}
+
+.journal-textarea::-webkit-scrollbar {
+  width: 10px;
+}
+
+.journal-textarea::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 6px 0;
+}
+
+.journal-textarea::-webkit-scrollbar-thumb {
+  background-color: rgba(120, 92, 47, 0.45);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.journal-textarea::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(120, 92, 47, 0.7);
+}

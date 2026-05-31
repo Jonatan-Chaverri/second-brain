@@ -87,14 +87,14 @@ export function JournalEditor() {
   }
 
   return (
-    <section className="mx-auto flex max-w-5xl flex-col gap-4 px-4 py-6 sm:px-6 sm:py-10">
-      <div className="rounded-[2rem] border border-sand-200 bg-white/85 p-5 shadow-lg shadow-sand-900/5 sm:p-8">
-        <div className="flex flex-col gap-3 border-b border-sand-100 pb-5 sm:flex-row sm:items-end sm:justify-between">
+    <section className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 overflow-hidden px-3 py-3 sm:px-6 sm:py-10">
+      <div className="flex flex-1 flex-col overflow-hidden rounded-2xl border border-sand-200 bg-white/85 p-4 shadow-lg shadow-sand-900/5 sm:rounded-[2rem] sm:p-8">
+        <div className="flex flex-col gap-2 border-b border-sand-100 pb-4 sm:flex-row sm:items-end sm:justify-between sm:pb-5">
           <div>
-            <p className="text-sm font-medium uppercase tracking-[0.25em] text-sand-500">
+            <p className="text-xs font-medium uppercase tracking-[0.25em] text-sand-500 sm:text-sm">
               Daily entry
             </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-sand-900">
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight text-sand-900 sm:mt-2 sm:text-3xl">
               Note for {entryDate || "today"}
             </h1>
           </div>
@@ -107,10 +107,10 @@ export function JournalEditor() {
           value={rawText}
           onChange={(event) => setRawText(event.target.value)}
           placeholder="Write freely. Capture the day, the feeling, the unfinished thought."
-          className="mt-6 min-h-[52vh] w-full rounded-[1.75rem] border border-sand-200 bg-sand-50/80 px-5 py-4 text-base leading-7 text-sand-900 outline-none transition focus:border-sand-400 focus:bg-white"
+          className="journal-textarea mt-4 w-full flex-1 resize-none overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/80 px-4 py-3 text-base leading-7 text-sand-900 outline-none transition focus:border-sand-400 focus:bg-white sm:mt-6 sm:rounded-[1.75rem] sm:px-5 sm:py-4"
         />
 
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-4 flex flex-col gap-3 sm:mt-5 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-red-700">{errorMessage ?? "\u00a0"}</p>
           <button
             type="button"

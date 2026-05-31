@@ -5,7 +5,16 @@ import { buildChatContext } from "@/lib/chat-context";
 import { answerJournalQuestion, OpenAiProcessingError } from "@/lib/openai";
 
 const chatSchema = z.object({
-  message: z.string().trim().min(1).max(10_000)
+  message: z.string().trim().min(1).max(10_000),
+  history: z
+    .array(
+      z.object({
+        role: z.enum(["user", "assistant"]),
+        content: z.string().trim().min(1).max(10_000)
+      })
+    )
+    .max(40)
+    .optional()
 });
 
 export async function POST(request: Request) {
@@ -27,6 +36,7 @@ export async function POST(request: Request) {
 
     const answer = await answerJournalQuestion({
       message: parsed.data.message,
+      history: parsed.data.history,
       contextBlocks: context.entries.map((entry) => ({
         entryDate: entry.entryDate,
         summary: entry.summary,

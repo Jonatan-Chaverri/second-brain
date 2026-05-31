@@ -172,6 +172,7 @@ async function generateEmbedding(rawText: string) {
 
 type ChatAnswerInput = {
   message: string;
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
   contextBlocks: Array<{
     entryDate: string;
     summary: string | null;
@@ -270,6 +271,10 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
           .join("\n\n")
       : "No se encontró contexto relevante en el diario.";
 
+  const historyMessages = (input.history ?? [])
+    .filter((turn) => turn.content.trim().length > 0)
+    .map((turn) => ({ role: turn.role, content: turn.content }));
+
   const payload = await callOpenAi<{
     choices?: Array<{
       message?: {
@@ -283,8 +288,9 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
       {
         role: "system",
         content:
-          "Responde siempre en español usando solo el contexto del diario proporcionado. No inventes detalles. Si el contexto es insuficiente, dilo claramente. Menciona fechas cuando estén disponibles."
+          "Responde siempre en español usando solo el contexto del diario proporcionado. No inventes detalles. Si el contexto es insuficiente, dilo claramente. Menciona fechas cuando estén disponibles. Mantén la coherencia con los turnos previos de la conversación."
       },
+      ...historyMessages,
       {
         role: "user",
         content: `Pregunta:\n${trimmedMessage}\n\nContexto del diario:\n${contextText}`

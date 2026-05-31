@@ -6,7 +6,7 @@ export default async function ChatPage() {
   await requireOwnerPageSession();
 
   return (
-    <main className="min-h-screen">
+    <main className="flex h-[100dvh] flex-col overflow-hidden">
       <TopNav />
       <ChatBox />
     </main>

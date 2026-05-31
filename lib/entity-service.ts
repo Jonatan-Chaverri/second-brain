@@ -42,7 +42,11 @@ async function upsertProjectSet(client: DbClient, userId: string, values: Normal
   );
 }
 
-async function upsertPersonSet(client: DbClient, userId: string, values: NormalizedEntity[]) {
+async function upsertPersonSet(
+  client: DbClient,
+  userId: string,
+  values: NormalizedEntity[]
+) {
   if (values.length === 0) {
     return [];
   }

@@ -1,6 +1,4 @@
-const requiredPublicEnvs = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"] as const;
-
-function getEnvValue(key: "OWNER_EMAIL" | (typeof requiredPublicEnvs)[number]) {
+function getRequiredEnvValue(key: string) {
   const value = process.env[key];
 
   if (!value) {
@@ -11,10 +9,11 @@ function getEnvValue(key: "OWNER_EMAIL" | (typeof requiredPublicEnvs)[number]) {
 }
 
 export const env = {
-  ownerEmail: getEnvValue("OWNER_EMAIL").toLowerCase()
+  ownerEmail: getRequiredEnvValue("OWNER_EMAIL").toLowerCase()
 };
 
-export const publicEnv = {
-  supabaseAnonKey: getEnvValue("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-  supabaseUrl: getEnvValue("NEXT_PUBLIC_SUPABASE_URL")
+export const serverEnv = {
+  openAiApiKey: getRequiredEnvValue("OPENAI_API_KEY"),
+  openAiEmbeddingModel: process.env.OPENAI_EMBEDDING_MODEL || "text-embedding-3-small",
+  openAiSummaryModel: process.env.OPENAI_SUMMARY_MODEL || "gpt-4.1-mini"
 };

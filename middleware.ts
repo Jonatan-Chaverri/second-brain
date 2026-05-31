@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { isOwnerEmail } from "@/lib/owner";
 import { updateSession } from "@/lib/supabase/middleware";
 
-const publicPaths = new Set(["/login", "/auth/callback"]);
+const publicPaths = new Set(["/login"]);
 
 function withCopiedCookies(from: NextResponse, to: NextResponse) {
   from.cookies.getAll().forEach((cookie) => {

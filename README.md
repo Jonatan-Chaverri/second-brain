@@ -28,7 +28,7 @@ Over time, the app is intended to support:
 
 ## Current Status
 
-Phases 1 and 2 are currently implemented:
+Phases 1, 2, and 3 are currently implemented:
 
 - owner-only authentication with Supabase Auth
 - protected app routes
@@ -37,11 +37,10 @@ Phases 1 and 2 are currently implemented:
 - save and reload support for a single daily entry
 - Prisma schema for users and note entries
 - server-side API routes for loading and saving entries
+- server-side OpenAI summarization and embedding generation on save
 
 Not implemented yet:
 
-- AI summaries
-- embeddings
 - vector search
 - chat
 - pgvector-specific retrieval features
@@ -104,13 +103,14 @@ See [.env.example](/Users/jonatan/Desktop/journal/.env.example) for the required
 - `DATABASE_URL`
 - `DIRECT_URL`
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 - `OPENAI_API_KEY`
+- `OPENAI_SUMMARY_MODEL`
+- `OPENAI_EMBEDDING_MODEL`
 - `OWNER_EMAIL`
 
 ## Notes
 
 - All current note save/load behavior is server-side.
 - The app is intended to remain private-first.
-- Later AI features should continue to keep secret keys on the server only.
+- AI processing runs on the server only and should continue to keep secret keys off the client.

@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireOwnerApiUser, syncOwnerUser } from "@/lib/auth";
+import { normalizeEntryDate, serializeJournalEntry } from "@/lib/journal-entry";
 import { prisma } from "@/lib/prisma";
 
 const querySchema = z.object({
   entryDate: z.string().date().optional()
 });
-
-function normalizeEntryDate(rawDate?: string) {
-  return new Date(`${rawDate ?? new Date().toISOString().slice(0, 10)}T00:00:00.000Z`);
-}
 
 export async function GET(request: Request) {
   try {
@@ -34,14 +31,7 @@ export async function GET(request: Request) {
     });
 
     return NextResponse.json({
-      entry: entry
-        ? {
-            id: entry.id,
-            rawText: entry.rawText,
-            entryDate: entry.entryDate.toISOString().slice(0, 10),
-            updatedAt: entry.updatedAt.toISOString()
-          }
-        : null
+      entry: entry ? serializeJournalEntry(entry) : null
     });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHENTICATED") {

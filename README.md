@@ -1,5 +1,9 @@
 # Second Brain
 
+<p align="center">
+  <img src="docs/blink.gif" alt="Blink mascot animation" width="160" />
+</p>
+
 Second Brain is a private, self-hosted AI journal. You write one entry per day, the app extracts structured metadata from it, stores embeddings with `pgvector`, and lets you chat only against your own saved journal context.
 
 The project is intended to be open source and reusable by anyone. It does not hardcode personal aliases or diary-specific knowledge in source code.

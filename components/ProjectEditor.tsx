@@ -6,12 +6,16 @@ import { useEffect, useRef, useState } from "react";
 
 import { TagInput } from "@/components/TagInput";
 
-type PersonRecord = {
+type ProjectRecord = {
   id: string;
   canonicalName: string;
   displayName: string;
+  description: string | null;
+  status: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  technologies: string[];
   notes: string | null;
-  birthday: string | null;
   aliases: string[];
   tags: string[];
   createdAt: string;
@@ -20,8 +24,12 @@ type PersonRecord = {
 
 type EditState = {
   displayName: string;
+  description: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  technologies: string;
   notes: string[];
-  birthday: string;
   aliases: string;
   tags: string[];
 };
@@ -50,32 +58,42 @@ function normalizeNoteBlocks(nextBlocks: string[]): string[] {
   return [...nonEmpty, ""];
 }
 
-function toEditState(person: PersonRecord): EditState {
+function toEditState(project: ProjectRecord): EditState {
   return {
-    displayName: person.displayName,
-    notes: splitNotesIntoBlocks(person.notes),
-    birthday: person.birthday ?? "",
-    aliases: person.aliases.join(", "),
-    tags: [...person.tags]
+    displayName: project.displayName,
+    description: project.description ?? "",
+    status: project.status ?? "",
+    startDate: project.startDate ?? "",
+    endDate: project.endDate ?? "",
+    technologies: project.technologies.join(", "),
+    notes: splitNotesIntoBlocks(project.notes),
+    aliases: project.aliases.join(", "),
+    tags: [...project.tags]
   };
 }
 
 type ApiResponse = {
-  person?: PersonRecord;
+  project?: ProjectRecord;
   error?: string;
 };
 
-export function PersonEditor({ person }: { person: PersonRecord }) {
+export function ProjectEditor({
+  project,
+  statusOptions
+}: {
+  project: ProjectRecord;
+  statusOptions: string[];
+}) {
   const router = useRouter();
-  const [editState, setEditState] = useState<EditState>(() => toEditState(person));
+  const [editState, setEditState] = useState<EditState>(() => toEditState(project));
   const [status, setStatus] = useState<"idle" | "saving" | "deleting">("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [canonicalName] = useState(person.canonicalName);
+  const [canonicalName] = useState(project.canonicalName);
   const noteBlockRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
 
   function autosizeTextarea(textarea: HTMLTextAreaElement | null) {
     if (!textarea) return;
-    const maxHeight = 96; // 4 lines * 24px (leading-6)
+    const maxHeight = 96;
     textarea.style.height = "0px";
     const nextHeight = Math.min(textarea.scrollHeight, maxHeight);
     textarea.style.height = `${nextHeight}px`;
@@ -140,30 +158,39 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
       .map((value) => value.trim())
       .filter(Boolean);
 
+    const techList = editState.technologies
+      .split(/[\n,]/u)
+      .map((value) => value.trim())
+      .filter(Boolean);
+
     const tagList = editState.tags.map((tag) => tag.trim()).filter(Boolean);
     const mergedNotes = mergeNoteBlocks(editState.notes);
 
     try {
-      const response = await fetch(`/api/people/${person.id}`, {
+      const response = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           displayName: editState.displayName,
+          description: editState.description.trim() ? editState.description : null,
+          status: editState.status ? editState.status : null,
+          startDate: editState.startDate ? editState.startDate : null,
+          endDate: editState.endDate ? editState.endDate : null,
+          technologies: techList,
           notes: mergedNotes.length > 0 ? mergedNotes : null,
-          birthday: editState.birthday ? editState.birthday : null,
           aliases: aliasList,
           tags: tagList
         })
       });
       const data = (await response.json()) as ApiResponse;
 
-      if (!response.ok || !data.person) {
-        throw new Error(data.error ?? "Could not update person.");
+      if (!response.ok || !data.project) {
+        throw new Error(data.error ?? "Could not update project.");
       }
 
-      setEditState(toEditState(data.person));
+      setEditState(toEditState(data.project));
       setStatus("idle");
-      router.push("/people");
+      router.push("/projects");
       router.refresh();
     } catch (error) {
       setStatus("idle");
@@ -173,25 +200,22 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
 
   async function handleDelete() {
     const confirmed = window.confirm(
-      `Delete ${person.displayName}? The model will no longer remember this person.`
+      `Delete ${project.displayName}? The model will no longer remember this project.`
     );
-
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
 
     setStatus("deleting");
     setErrorMessage(null);
 
     try {
-      const response = await fetch(`/api/people/${person.id}`, { method: "DELETE" });
+      const response = await fetch(`/api/projects/${project.id}`, { method: "DELETE" });
       const data = (await response.json()) as { success?: boolean; error?: string };
 
       if (!response.ok || !data.success) {
-        throw new Error(data.error ?? "Could not delete person.");
+        throw new Error(data.error ?? "Could not delete project.");
       }
 
-      router.push("/people");
+      router.push("/projects");
       router.refresh();
     } catch (error) {
       setStatus("idle");
@@ -202,19 +226,19 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
   return (
     <section className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-6 sm:px-6 sm:py-10">
       <Link
-        href="/people"
+        href="/projects"
         className="inline-flex w-fit items-center gap-1 rounded-full border border-sand-200 px-4 py-2 text-sm text-sand-700 hover:border-sand-300 hover:text-sand-900"
       >
-        ← Back to people
+        ← Back to projects
       </Link>
 
       <div className="rounded-[2rem] border border-sand-200 bg-white/85 p-5 shadow-lg shadow-sand-900/5 sm:p-8">
         <div className="border-b border-sand-100 pb-5">
           <p className="text-sm font-medium uppercase tracking-[0.25em] text-sand-500">
-            Person
+            Project
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-sand-900">
-            {editState.displayName || person.displayName}
+            {editState.displayName || project.displayName}
           </h1>
           <p className="mt-2 text-xs text-sand-500">
             Canonical: <code>{canonicalName}</code>
@@ -233,17 +257,46 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
             />
           </label>
 
+          <label className="grid gap-2 text-sm text-sand-700">
+            <div className="flex items-center justify-between">
+              <span>Description (optional)</span>
+              <span
+                className={`text-xs ${
+                  editState.description.length > 1500 ? "text-red-600" : "text-sand-500"
+                }`}
+              >
+                {editState.description.length}/1500
+              </span>
+            </div>
+            <textarea
+              value={editState.description}
+              onChange={(event) =>
+                setEditState((current) => ({ ...current, description: event.target.value }))
+              }
+              rows={3}
+              maxLength={1500}
+              placeholder="Short summary the assistant can reuse on every chat. Keep it tight."
+              className="resize-y rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
+            />
+          </label>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="grid gap-2 text-sm text-sand-700">
-              <span>Birthday (optional)</span>
-              <input
-                type="date"
-                value={editState.birthday}
+              <span>Status</span>
+              <select
+                value={editState.status}
                 onChange={(event) =>
-                  setEditState((current) => ({ ...current, birthday: event.target.value }))
+                  setEditState((current) => ({ ...current, status: event.target.value }))
                 }
                 className="rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
-              />
+              >
+                <option value="">— Not set —</option>
+                {statusOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label className="grid gap-2 text-sm text-sand-700">
@@ -253,22 +306,60 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
                 onChange={(event) =>
                   setEditState((current) => ({ ...current, aliases: event.target.value }))
                 }
-                placeholder="e.g. nickname, short name"
+                placeholder="e.g. codename, short name"
                 className="rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
               />
             </label>
           </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="grid gap-2 text-sm text-sand-700">
+              <span>Start date (optional)</span>
+              <input
+                type="date"
+                value={editState.startDate}
+                onChange={(event) =>
+                  setEditState((current) => ({ ...current, startDate: event.target.value }))
+                }
+                className="rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
+              />
+            </label>
+
+            <label className="grid gap-2 text-sm text-sand-700">
+              <span>End date (optional)</span>
+              <input
+                type="date"
+                value={editState.endDate}
+                onChange={(event) =>
+                  setEditState((current) => ({ ...current, endDate: event.target.value }))
+                }
+                className="rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
+              />
+            </label>
+          </div>
+
+          <label className="grid gap-2 text-sm text-sand-700">
+            <span>Technologies (comma separated)</span>
+            <input
+              value={editState.technologies}
+              onChange={(event) =>
+                setEditState((current) => ({ ...current, technologies: event.target.value }))
+              }
+              placeholder="e.g. Next.js, Prisma, Postgres"
+              className="rounded-2xl border border-sand-200 bg-white px-4 py-3 text-sand-900 outline-none focus:border-sand-400"
+            />
+          </label>
 
           <div className="grid gap-2 text-sm text-sand-700">
             <span>Tags</span>
             <TagInput
               value={editState.tags}
               onChange={(tags) => setEditState((current) => ({ ...current, tags }))}
-              scope="person"
+              scope="project"
             />
             <span className="text-xs text-sand-500">
-              Pick from your existing tags or type a new one and press Enter. The chat can filter
-              by tag (e.g. ask about “family members”).
+              Pick from your existing tags or type a new one and press Enter. Project tags are
+              separate from people tags.
             </span>
           </div>
 
@@ -326,7 +417,7 @@ export function PersonEditor({ person }: { person: PersonRecord }) {
               disabled={status === "saving" || status === "deleting"}
               className="inline-flex items-center justify-center rounded-full border border-red-300 px-4 py-2 text-sm font-medium text-red-700 transition hover:border-red-400 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {status === "deleting" ? "Deleting..." : "Delete person"}
+              {status === "deleting" ? "Deleting..." : "Delete project"}
             </button>
 
             <button

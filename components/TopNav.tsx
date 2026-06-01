@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { BlinkSprite } from "@/components/BlinkSprite";
 
 type NavLink = {
-  href: "/journal" | "/chat" | "/people" | "/aliases" | "/me" | "/settings";
+  href: "/journal" | "/chat" | "/people" | "/projects" | "/aliases" | "/me" | "/settings";
   label: string;
   icon: ReactNode;
 };
@@ -66,6 +66,19 @@ const navLinks: NavLink[] = [
     )
   },
   {
+    href: "/projects",
+    label: "Projects",
+    icon: (
+      <Icon>
+        <path d="M3 7.5 12 3l9 4.5" />
+        <path d="M3 7.5v9L12 21l9-4.5v-9" />
+        <path d="M12 12 3 7.5" />
+        <path d="M12 12v9" />
+        <path d="M12 12l9-4.5" />
+      </Icon>
+    )
+  },
+  {
     href: "/aliases",
     label: "Aliases",
     icon: (
@@ -99,8 +112,27 @@ const navLinks: NavLink[] = [
   }
 ];
 
-function getLinkClass(pathname: string, href: string) {
-  const isActive = pathname === href;
+const navLinksByHref = new Map(navLinks.map((link) => [link.href, link]));
+
+type MobileNavSection = {
+  title: string;
+  links: NavLink[];
+};
+
+const mobileNavSections: MobileNavSection[] = (
+  [
+    { title: "Principal", hrefs: ["/journal", "/chat"] as const },
+    { title: "AI knowledge", hrefs: ["/projects", "/people", "/me"] as const },
+    { title: "Configuration", hrefs: ["/aliases", "/settings"] as const }
+  ]
+).map((section) => ({
+  title: section.title,
+  links: section.hrefs
+    .map((href) => navLinksByHref.get(href))
+    .filter((link): link is NavLink => Boolean(link))
+}));
+
+function getLinkClass(pathname: string, href: string) {  const isActive = pathname === href;
 
   return isActive
     ? "inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-4 py-2 text-indigo-300 ring-1 ring-inset ring-indigo-400/40 shadow-[0_0_18px_-6px_rgba(129,140,248,0.6)]"
@@ -156,9 +188,13 @@ export function TopNav() {
   return (
     <header ref={headerRef} className="sticky top-0 z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
       <div className="relative mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-        <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 nav:hidden">
+        <Link
+          href="/chat"
+          aria-label="Open chat"
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 nav:hidden"
+        >
           <BlinkSprite size={40} />
-        </span>
+        </Link>
         <button
           type="button"
           aria-label="Toggle navigation"
@@ -202,9 +238,9 @@ export function TopNav() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <span className="hidden nav:inline-flex">
+          <Link href="/chat" aria-label="Open chat" className="hidden nav:inline-flex">
             <BlinkSprite size={40} />
-          </span>
+          </Link>
           <form action="/api/logout" method="post">
             <button
               type="submit"
@@ -258,16 +294,25 @@ export function TopNav() {
               </button>
             </div>
             <nav className="flex-1 overflow-y-auto px-3 py-4">
-              <ul className="flex flex-col gap-1 text-sm font-medium">
-                {navLinks.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className={getMobileLinkClass(pathname, link.href)}>
-                      {link.icon}
-                      {link.label}
-                    </Link>
-                  </li>
+              <div className="flex flex-col gap-5 text-sm font-medium">
+                {mobileNavSections.map((section) => (
+                  <div key={section.title} className="flex flex-col gap-1">
+                    <span className="px-4 pb-1 text-[11px] font-semibold uppercase tracking-wider text-sand-500">
+                      {section.title}
+                    </span>
+                    <ul className="flex flex-col gap-1">
+                      {section.links.map((link) => (
+                        <li key={link.href}>
+                          <Link href={link.href} className={getMobileLinkClass(pathname, link.href)}>
+                            {link.icon}
+                            {link.label}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
-              </ul>
+              </div>
             </nav>
               </aside>
             </div>,

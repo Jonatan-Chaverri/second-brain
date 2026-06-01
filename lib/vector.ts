@@ -42,6 +42,52 @@ export async function setJournalEntryEmbedding(
   `;
 }
 
+export async function setProjectEmbedding(
+  projectId: string,
+  embedding: number[] | null,
+  client: DbClient = prisma
+) {
+  const vectorLiteral = embedding ? formatVectorLiteral(embedding) : null;
+
+  if (!vectorLiteral) {
+    await client.$executeRaw`
+      UPDATE "projects"
+      SET "embedding" = NULL
+      WHERE "id" = ${projectId}
+    `;
+    return;
+  }
+
+  await client.$executeRaw`
+    UPDATE "projects"
+    SET "embedding" = ${vectorLiteral}::extensions.vector(1536)
+    WHERE "id" = ${projectId}
+  `;
+}
+
+export async function setPersonEmbedding(
+  personId: string,
+  embedding: number[] | null,
+  client: DbClient = prisma
+) {
+  const vectorLiteral = embedding ? formatVectorLiteral(embedding) : null;
+
+  if (!vectorLiteral) {
+    await client.$executeRaw`
+      UPDATE "people"
+      SET "embedding" = NULL
+      WHERE "id" = ${personId}
+    `;
+    return;
+  }
+
+  await client.$executeRaw`
+    UPDATE "people"
+    SET "embedding" = ${vectorLiteral}::extensions.vector(1536)
+    WHERE "id" = ${personId}
+  `;
+}
+
 export async function getJournalEntryEmbeddingDimensions(
   journalEntryId: string,
   client: DbClient = prisma

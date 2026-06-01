@@ -6,6 +6,51 @@ import {
   normalizeLookupKey,
   toCanonicalSlug
 } from "@/lib/entity-normalization";
+import { generateEmbedding } from "@/lib/openai";
+import { setPersonEmbedding } from "@/lib/vector";
+
+function buildPersonEmbeddingSource(parts: {
+  displayName: string;
+  notes: string | null;
+  aliases: string[];
+  tags: string[];
+}): string {
+  return [parts.displayName, ...parts.aliases, ...parts.tags, parts.notes]
+    .map((value) => (value ?? "").toString().trim())
+    .filter((value) => value.length > 0)
+    .join(" ")
+    .trim();
+}
+
+async function refreshPersonEmbedding(input: {
+  userId: string;
+  personId: string;
+  canonicalName: string;
+  displayName: string;
+  notes: string | null;
+}) {
+  const aliasesByCanonical = await loadAliasesByCanonical(input.userId, [input.canonicalName]);
+  const tagsByPersonId = await loadTagsByPersonIds(input.userId, [input.personId]);
+  const aliases = aliasesByCanonical.get(input.canonicalName) ?? [];
+  const tags = tagsByPersonId.get(input.personId) ?? [];
+  const source = buildPersonEmbeddingSource({
+    displayName: input.displayName,
+    notes: input.notes,
+    aliases,
+    tags
+  });
+
+  try {
+    if (!source) {
+      await setPersonEmbedding(input.personId, null);
+      return;
+    }
+    const embedding = await generateEmbedding(source, input.userId);
+    await setPersonEmbedding(input.personId, embedding);
+  } catch (error) {
+    console.error("[people-service] Failed to refresh person embedding", error);
+  }
+}
 
 export type PersonRecord = {
   id: string;
@@ -240,13 +285,15 @@ async function replacePersonTags(
   for (const tag of normalized) {
     const upserted = await tx.tag.upsert({
       where: {
-        userId_canonicalName: {
+        userId_scope_canonicalName: {
           userId,
+          scope: "person",
           canonicalName: tag.canonicalName
         }
       },
       create: {
         userId,
+        scope: "person",
         canonicalName: tag.canonicalName,
         displayName: tag.displayName
       },
@@ -308,7 +355,7 @@ export type TagRecord = {
 
 export async function listTagsForUser(userId: string): Promise<TagRecord[]> {
   const tags = await prisma.tag.findMany({
-    where: { userId },
+    where: { userId, scope: "person" },
     orderBy: { displayName: "asc" },
     select: {
       id: true,
@@ -428,6 +475,15 @@ export async function createPerson(input: CreatePersonInput): Promise<PersonReco
 
   const aliasesByCanonical = await loadAliasesByCanonical(input.userId, [created.canonicalName]);
   const tagsByPersonId = await loadTagsByPersonIds(input.userId, [created.id]);
+
+  await refreshPersonEmbedding({
+    userId: input.userId,
+    personId: created.id,
+    canonicalName: created.canonicalName,
+    displayName: created.displayName,
+    notes: created.notes
+  });
+
   return toPersonRecord(
     created,
     aliasesByCanonical.get(created.canonicalName) ?? [],
@@ -505,6 +561,15 @@ export async function updatePerson(input: UpdatePersonInput): Promise<PersonReco
 
   const aliasesByCanonical = await loadAliasesByCanonical(input.userId, [updated.canonicalName]);
   const tagsByPersonId = await loadTagsByPersonIds(input.userId, [updated.id]);
+
+  await refreshPersonEmbedding({
+    userId: input.userId,
+    personId: updated.id,
+    canonicalName: updated.canonicalName,
+    displayName: updated.displayName,
+    notes: updated.notes
+  });
+
   return toPersonRecord(
     updated,
     aliasesByCanonical.get(updated.canonicalName) ?? [],
@@ -594,6 +659,15 @@ export async function getPersonDirectoryForCanonicalNames(
       .map((row) => row.tag.displayName)
       .sort((left, right) => left.localeCompare(right))
   }));
+}
+
+export async function listPersonNameIndexForUser(userId: string): Promise<string[]> {
+  const people = await prisma.person.findMany({
+    where: { userId },
+    orderBy: { displayName: "asc" },
+    select: { displayName: true }
+  });
+  return people.map((person) => person.displayName);
 }
 
 export function canonicalizeName(value: string) {

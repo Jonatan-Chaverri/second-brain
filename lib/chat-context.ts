@@ -5,8 +5,10 @@ import { normalizeLookupKey } from "@/lib/entity-normalization";
 import {
   findPersonCanonicalNamesByTagLabels,
   getPersonDirectoryForCanonicalNames,
+  listPersonNameIndexForUser,
   PersonDirectoryEntry
 } from "@/lib/people-service";
+import { getProjectDirectoryForCanonicalNames, listProjectNameIndexForUser } from "@/lib/projects-service";
 import { formatVectorLiteral } from "@/lib/vector";
 
 type SimilarJournalEntryRow = {
@@ -335,31 +337,109 @@ export async function buildChatContext(input: {
     input.message
   );
 
-  const allCanonicalNames = Array.from(
-    new Set([
-      ...referencedCanonicalNames,
-      ...messageMentionedCanonicalNames,
-      ...tagMentionedCanonicalNames
-    ])
+  const personNameIndex = await listPersonNameIndexForUser(input.userId);
+
+  const PEOPLE_DIRECTORY_LIMIT = 8;
+  const PEOPLE_MIN_SIMILARITY = 0.3;
+
+  const peopleCanonicalNames = new Set<string>([
+    ...referencedCanonicalNames,
+    ...messageMentionedCanonicalNames,
+    ...tagMentionedCanonicalNames
+  ]);
+
+  if (
+    personNameIndex.length > 0 &&
+    peopleCanonicalNames.size < PEOPLE_DIRECTORY_LIMIT
+  ) {
+    const relevantPeople = await findRelevantPersonCanonicalNames({
+      userId: input.userId,
+      message: input.message,
+      limit: PEOPLE_DIRECTORY_LIMIT,
+      minSimilarity: PEOPLE_MIN_SIMILARITY
+    });
+    for (const name of relevantPeople) {
+      if (peopleCanonicalNames.size >= PEOPLE_DIRECTORY_LIMIT) break;
+      peopleCanonicalNames.add(name);
+    }
+  }
+
+  const cappedPeopleCanonicalNames = Array.from(peopleCanonicalNames).slice(
+    0,
+    PEOPLE_DIRECTORY_LIMIT
   );
 
   const peopleDirectory = await getPersonDirectoryForCanonicalNames(
     input.userId,
-    allCanonicalNames
+    cappedPeopleCanonicalNames
   );
 
   const matchedInsightCategories = detectInsightCategoriesInMessage(input.message);
   const userInsights = await fetchUserInsights(input.userId, matchedInsightCategories);
   const userProfile = await fetchUserProfile(input.userId);
 
+  const projectNameIndex = await listProjectNameIndexForUser(input.userId);
+
+  const PROJECT_DIRECTORY_LIMIT = 5;
+  const PROJECT_MIN_SIMILARITY = 0.3;
+
+  const projectCanonicalNames = new Set<string>();
+
+  if (projectNameIndex.length > 0) {
+    const mentioned = await findProjectCanonicalNamesMentionedInMessage(
+      input.userId,
+      input.message
+    );
+    for (const name of mentioned) projectCanonicalNames.add(name);
+
+    const taggedProjects = await findProjectCanonicalNamesByTagMentions(
+      input.userId,
+      input.message
+    );
+    for (const name of taggedProjects) projectCanonicalNames.add(name);
+
+    const entryLinkedProjects = await getProjectCanonicalNamesForEntries(
+      entries.map((entry) => entry.entryId)
+    );
+    for (const name of entryLinkedProjects) projectCanonicalNames.add(name);
+
+    if (projectCanonicalNames.size < PROJECT_DIRECTORY_LIMIT) {
+      const relevant = await findRelevantProjectCanonicalNames({
+        userId: input.userId,
+        message: input.message,
+        limit: PROJECT_DIRECTORY_LIMIT,
+        minSimilarity: PROJECT_MIN_SIMILARITY
+      });
+      for (const name of relevant) {
+        if (projectCanonicalNames.size >= PROJECT_DIRECTORY_LIMIT) break;
+        projectCanonicalNames.add(name);
+      }
+    }
+  }
+
+  const cappedProjectCanonicalNames = Array.from(projectCanonicalNames).slice(
+    0,
+    PROJECT_DIRECTORY_LIMIT
+  );
+  const projectDirectory = await getProjectDirectoryForCanonicalNames(
+    input.userId,
+    cappedProjectCanonicalNames
+  );
+
   return {
     entries,
     peopleDirectory,
+    personNameIndex,
+    projectDirectory,
+    projectNameIndex,
     userInsights,
     userProfile,
     hasEnoughContext:
       entries.length > 0 ||
       peopleDirectory.length > 0 ||
+      personNameIndex.length > 0 ||
+      projectDirectory.length > 0 ||
+      projectNameIndex.length > 0 ||
       userInsights.length > 0 ||
       userProfile !== null
   };
@@ -376,7 +456,7 @@ async function findPersonCanonicalNamesByTagMentions(
   }
 
   const tags = await prisma.tag.findMany({
-    where: { userId },
+    where: { userId, scope: "person" },
     select: { canonicalName: true, displayName: true }
   });
 
@@ -454,3 +534,152 @@ async function getCanonicalNamesForEntries(entryIds: string[]): Promise<string[]
 }
 
 export type { PersonDirectoryEntry };
+
+async function findProjectCanonicalNamesMentionedInMessage(
+  userId: string,
+  message: string
+): Promise<string[]> {
+  const normalizedMessage = ` ${normalizeLookupKey(message)} `;
+
+  if (normalizedMessage.trim().length === 0) {
+    return [];
+  }
+
+  const [projects, aliases] = await Promise.all([
+    prisma.project.findMany({
+      where: { userId },
+      select: { canonicalName: true, displayName: true }
+    }),
+    prisma.entityAlias.findMany({
+      where: { userId, entityType: EntityAliasType.project },
+      select: { alias: true, canonicalName: true }
+    })
+  ]);
+
+  const matches = new Set<string>();
+
+  for (const project of projects) {
+    const needle = normalizeLookupKey(project.displayName);
+    if (needle && normalizedMessage.includes(` ${needle} `)) {
+      matches.add(project.canonicalName);
+    }
+  }
+
+  for (const alias of aliases) {
+    const needle = normalizeLookupKey(alias.alias);
+    if (needle && normalizedMessage.includes(` ${needle} `)) {
+      matches.add(alias.canonicalName);
+    }
+  }
+
+  return Array.from(matches);
+}
+
+async function findProjectCanonicalNamesByTagMentions(
+  userId: string,
+  message: string
+): Promise<string[]> {
+  const normalizedMessage = ` ${normalizeLookupKey(message)} `;
+
+  if (normalizedMessage.trim().length === 0) {
+    return [];
+  }
+
+  const tags = await prisma.tag.findMany({
+    where: { userId, scope: "project" },
+    select: { id: true, displayName: true }
+  });
+
+  const matchedTagIds: string[] = [];
+  for (const tag of tags) {
+    const needle = normalizeLookupKey(tag.displayName);
+    if (needle && normalizedMessage.includes(` ${needle} `)) {
+      matchedTagIds.push(tag.id);
+    }
+  }
+
+  if (matchedTagIds.length === 0) return [];
+
+  const rows = await prisma.project.findMany({
+    where: {
+      userId,
+      tags: { some: { tagId: { in: matchedTagIds } } }
+    },
+    select: { canonicalName: true }
+  });
+
+  return Array.from(new Set(rows.map((row) => row.canonicalName)));
+}
+
+async function getProjectCanonicalNamesForEntries(entryIds: string[]): Promise<string[]> {
+  if (entryIds.length === 0) return [];
+
+  const rows = await prisma.journalEntryProject.findMany({
+    where: { journalEntryId: { in: entryIds } },
+    select: { project: { select: { canonicalName: true } } }
+  });
+
+  return Array.from(new Set(rows.map((row) => row.project.canonicalName)));
+}
+
+type SimilarPersonRow = {
+  canonicalName: string;
+  similarity: number;
+};
+
+async function findRelevantPersonCanonicalNames(input: {
+  userId: string;
+  message: string;
+  limit: number;
+  minSimilarity: number;
+}): Promise<string[]> {
+  const queryEmbedding = await generateQueryEmbedding(input.message, input.userId);
+  const vectorLiteral = formatVectorLiteral(queryEmbedding);
+  if (!vectorLiteral) return [];
+
+  const rows = await prisma.$queryRaw<SimilarPersonRow[]>`
+    SELECT
+      "canonicalName",
+      1 - ("embedding" <=> ${vectorLiteral}::extensions.vector(1536)) AS "similarity"
+    FROM "people"
+    WHERE "userId" = ${input.userId}
+      AND "embedding" IS NOT NULL
+    ORDER BY "embedding" <=> ${vectorLiteral}::extensions.vector(1536)
+    LIMIT ${input.limit}
+  `;
+
+  return rows
+    .filter((row) => row.similarity >= input.minSimilarity)
+    .map((row) => row.canonicalName);
+}
+
+type SimilarProjectRow = {
+  canonicalName: string;
+  similarity: number;
+};
+
+async function findRelevantProjectCanonicalNames(input: {
+  userId: string;
+  message: string;
+  limit: number;
+  minSimilarity: number;
+}): Promise<string[]> {
+  const queryEmbedding = await generateQueryEmbedding(input.message, input.userId);
+  const vectorLiteral = formatVectorLiteral(queryEmbedding);
+  if (!vectorLiteral) return [];
+
+  const rows = await prisma.$queryRaw<SimilarProjectRow[]>`
+    SELECT
+      "canonicalName",
+      1 - ("embedding" <=> ${vectorLiteral}::extensions.vector(1536)) AS "similarity"
+    FROM "projects"
+    WHERE "userId" = ${input.userId}
+      AND "embedding" IS NOT NULL
+    ORDER BY "embedding" <=> ${vectorLiteral}::extensions.vector(1536)
+    LIMIT ${input.limit}
+  `;
+
+  return rows
+    .filter((row) => row.similarity >= input.minSimilarity)
+    .map((row) => row.canonicalName);
+}

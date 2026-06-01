@@ -225,7 +225,7 @@ async function summarizeJournalEntry(rawText: string, userId?: string) {
   };
 }
 
-async function generateEmbedding(rawText: string, userId?: string) {
+export async function generateEmbedding(rawText: string, userId?: string) {
   const payload = await callOpenAi<{
     data?: Array<{
       embedding?: number[];
@@ -265,6 +265,19 @@ type ChatAnswerInput = {
     aliases: string[];
     tags: string[];
   }>;
+  personNameIndex?: string[];
+  projectDirectory?: Array<{
+    displayName: string;
+    description: string | null;
+    status: string | null;
+    startDate: string | null;
+    endDate: string | null;
+    technologies: string[];
+    notes: string | null;
+    aliases: string[];
+    tags: string[];
+  }>;
+  projectNameIndex?: string[];
   contextBlocks: Array<{
     entryDate: string;
     summary: string | null;
@@ -381,10 +394,59 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
           .join("\n")
       : null;
 
+  const PROJECT_TEXT_FIELD_LIMIT = 600;
+  function truncateForPrompt(value: string | null): string | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    if (trimmed.length <= PROJECT_TEXT_FIELD_LIMIT) return trimmed;
+    return `${trimmed.slice(0, PROJECT_TEXT_FIELD_LIMIT).trimEnd()}…`;
+  }
+
+  const projectDirectoryText =
+    input.projectDirectory && input.projectDirectory.length > 0
+      ? input.projectDirectory
+          .map((project) => {
+            const dateRange = project.startDate
+              ? `${project.startDate}${project.endDate ? ` → ${project.endDate}` : ""}`
+              : project.endDate
+              ? `→ ${project.endDate}`
+              : null;
+            const truncatedDescription = truncateForPrompt(project.description);
+            const truncatedNotes = truncateForPrompt(project.notes);
+            const lines: Array<string | null> = [
+              `- ${project.displayName}`,
+              project.aliases.length > 0 ? `  Alias: ${project.aliases.join(", ")}` : null,
+              project.status ? `  Estado: ${project.status}` : null,
+              dateRange ? `  Fechas: ${dateRange}` : null,
+              project.technologies.length > 0
+                ? `  Tecnologías: ${project.technologies.join(", ")}`
+                : null,
+              project.tags.length > 0 ? `  Tags: ${project.tags.join(", ")}` : null,
+              truncatedDescription ? `  Descripción: ${truncatedDescription}` : null,
+              truncatedNotes ? `  Notas: ${truncatedNotes}` : null
+            ];
+            return lines.filter((line): line is string => line !== null).join("\n");
+          })
+          .join("\n")
+      : null;
+
+  const projectNameIndexText =
+    input.projectNameIndex && input.projectNameIndex.length > 0
+      ? input.projectNameIndex.join(", ")
+      : null;
+
+  const personNameIndexText =
+    input.personNameIndex && input.personNameIndex.length > 0
+      ? input.personNameIndex.join(", ")
+      : null;
+
   const systemPrompt = [
     'Eres el asistente personal de un diario privado ("segundo cerebro").',
     "Cuando el usuario pregunte por hoy, ayer, mañana o esta semana, usa la fecha local del usuario proporcionada en el contexto temporal; no asumas UTC ni hora del servidor.",
-    "Cuando exista un Directorio de personas, trátalo como datos confiables provistos por el usuario sobre esas personas (notas, cumpleaños, alias, tags). Úsalo libremente para responder preguntas sobre ellas, incluso si no aparecen en las entradas recuperadas. Si el usuario pregunta por un grupo descrito por un tag (por ejemplo, \"familia\", \"amigos\", \"colegas\"), responde listando las personas del directorio cuyos tags coincidan.",
+    "Cuando exista una sección 'Lista de personas', es el índice completo de los nombres de todas las personas que el usuario tiene registradas. Úsala para confirmar si un nombre o concepto que menciona el usuario corresponde a alguien registrado, para listar personas cuando lo pida, y para pedir aclaración si te refieres a varias posibles. No contiene notas: para detalles (notas, cumpleaños, tags, alias), usa el 'Directorio de personas'.",
+    "Cuando exista un Directorio de personas, trátalo como datos confiables provístos por el usuario sobre las personas relevantes a esta pregunta (notas, cumpleaños, alias, tags). Solo contiene las personas más relacionadas con la pregunta actual, no todas. Úsalo libremente para responder preguntas sobre ellas, incluso si no aparecen en las entradas recuperadas. Si el usuario pregunta por un grupo descrito por un tag (por ejemplo, \"familia\", \"amigos\", \"colegas\"), responde listando las personas del directorio cuyos tags coincidan.",
+    "Cuando exista una sección 'Lista de proyectos', es el índice completo de los nombres de todos los proyectos del usuario. Úsala para confirmar si un nombre o concepto que menciona el usuario corresponde a un proyecto existente, para listar proyectos cuando lo pida, y para pedir aclaración si te refieres a varios posibles. No contiene descripciones: para detalles, usa el 'Directorio de proyectos'.",
+    "Cuando exista un Directorio de proyectos, trátalo como datos confiables provistos por el usuario sobre los proyectos relevantes a esta pregunta (descripción, fechas, estado, tecnologías, notas, alias, tags). Solo contiene los proyectos más relacionados con la pregunta actual, no todos. Úsalo libremente como contexto cuando se hable de un proyecto, aunque no aparezca en las entradas recuperadas. Si el usuario pregunta cosas como '¿en qué estoy trabajando?' o pide listar proyectos activos/pausados, basa la respuesta en este directorio (filtrando por estado o tag cuando aplique).",
     "Cuando exista una sección 'Conocimiento del usuario sobre sí mismo', trátala como hechos extraídos previamente de las entradas del diario sobre el autor. Úsala como fuente principal para preguntas introspectivas (inseguridades, miedos, logros, fortalezas, debilidades, valores, metas, sueños, hábitos, etc.).",
     "Cuando exista una sección 'Perfil del usuario', trátala como datos confiables que el usuario proporcionó directamente sobre sí mismo (fecha de nacimiento, profesión, tipo de personalidad, lugar de residencia, idiomas, pronombres, bio, notas). Úsala libremente como contexto base sobre quién es el autor y para adaptar el tono. No la repitas de vuelta innecesariamente, solo úsala cuando sea relevante para la respuesta.",
     "Para preguntas introspectivas no te limites a repetir los insights guardados: identifica patrones, posibles raíces o creencias subyacentes (por ejemplo, comparación social, miedo al rechazo, baja autoestima, perfeccionismo, necesidad de validación), conecta insights relacionados entre sí y, cuando ayude, ofrece una hipótesis breve sobre qué podría estar detrás. Mantén un tono cálido, honesto y directo, sin diagnosticar ni moralizar. Cita las fechas como evidencia cuando refuerce el punto, pero el foco debe ser la reflexión, no el listado.",
@@ -397,6 +459,18 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
 
   const directorySection = peopleDirectoryText
     ? `Directorio de personas:\n${peopleDirectoryText}\n\n`
+    : "";
+
+  const personNameIndexSection = personNameIndexText
+    ? `Lista de personas: ${personNameIndexText}\n\n`
+    : "";
+
+  const projectDirectorySection = projectDirectoryText
+    ? `Directorio de proyectos:\n${projectDirectoryText}\n\n`
+    : "";
+
+  const projectNameIndexSection = projectNameIndexText
+    ? `Lista de proyectos: ${projectNameIndexText}\n\n`
     : "";
 
   const insightsByCategory = new Map<UserInsightCategory, string[]>();
@@ -434,8 +508,8 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
 
   const userContent =
     hasContext || hasInsights
-      ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${profileSection}${directorySection}${insightsSection}Pregunta:\n${trimmedMessage}${hasContext ? `\n\nContexto del diario:\n${contextText}` : ""}`
-      : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${profileSection}${directorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
+      ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${profileSection}${personNameIndexSection}${directorySection}${projectNameIndexSection}${projectDirectorySection}${insightsSection}Pregunta:\n${trimmedMessage}${hasContext ? `\n\nContexto del diario:\n${contextText}` : ""}`
+      : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${profileSection}${personNameIndexSection}${directorySection}${projectNameIndexSection}${projectDirectorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
 
   // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
   const HISTORY_TURN_LIMIT = 6;

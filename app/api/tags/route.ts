@@ -1,7 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import { requireOwnerApiUser, syncOwnerUser } from "@/lib/auth";
 import { listTagsForUser } from "@/lib/people-service";
+import { listProjectTagsForUser } from "@/lib/projects-service";
 
 function handleAuthError(error: unknown) {
   if (error instanceof Error && error.message === "UNAUTHENTICATED") {
@@ -15,12 +16,32 @@ function handleAuthError(error: unknown) {
   return null;
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const authUser = await requireOwnerApiUser();
     const dbUser = await syncOwnerUser(authUser.email!.toLowerCase());
-    const tags = await listTagsForUser(dbUser.id);
 
+    const scopeParam = request.nextUrl.searchParams.get("scope");
+    const scope = scopeParam === "project" ? "project" : "person";
+
+    if (scope === "project") {
+      const projectTags = await listProjectTagsForUser(dbUser.id);
+      const tags = projectTags.map((tag) => ({
+        id: tag.id,
+        canonicalName: tag.canonicalName,
+        displayName: tag.displayName,
+        count: tag.projectCount
+      }));
+      return NextResponse.json({ tags });
+    }
+
+    const personTags = await listTagsForUser(dbUser.id);
+    const tags = personTags.map((tag) => ({
+      id: tag.id,
+      canonicalName: tag.canonicalName,
+      displayName: tag.displayName,
+      count: tag.personCount
+    }));
     return NextResponse.json({ tags });
   } catch (error) {
     const authError = handleAuthError(error);

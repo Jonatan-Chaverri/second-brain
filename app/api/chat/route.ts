@@ -48,6 +48,9 @@ export async function POST(request: Request) {
       history: parsed.data.history,
       browserContext: parsed.data.browserContext,
       peopleDirectory: context.peopleDirectory,
+      personNameIndex: context.personNameIndex,
+      projectDirectory: context.projectDirectory,
+      projectNameIndex: context.projectNameIndex,
       userInsights: context.userInsights,
       userProfile: context.userProfile,
       contextBlocks: context.entries.map((entry) => ({

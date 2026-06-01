@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { requireOwnerApiUser, syncOwnerUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { estimateUsdCost } from "@/lib/ai-pricing";
+import { currentYearMonth } from "@/lib/ai-usage-service";
 
 function handleAuthError(error: unknown) {
   if (error instanceof Error && error.message === "UNAUTHENTICATED") {
@@ -20,7 +21,7 @@ export async function GET() {
     const dbUser = await syncOwnerUser(authUser.email!.toLowerCase());
 
     const rows = await prisma.aiUsage.findMany({
-      where: { userId: dbUser.id },
+      where: { userId: dbUser.id, yearMonth: currentYearMonth() },
       orderBy: [{ yearMonth: "desc" }, { model: "asc" }]
     });
 

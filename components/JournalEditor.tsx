@@ -49,6 +49,7 @@ export function JournalEditor() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
   const blockRefs = useRef<Array<HTMLTextAreaElement | null>>([]);
+  const blocksContainerRef = useRef<HTMLDivElement | null>(null);
 
   function autosizeTextarea(textarea: HTMLTextAreaElement | null) {
     if (!textarea) {
@@ -61,6 +62,10 @@ export function JournalEditor() {
 
   useEffect(() => {
     blockRefs.current.forEach((textarea) => autosizeTextarea(textarea));
+    const container = blocksContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [blocks]);
 
   useEffect(() => {
@@ -187,7 +192,7 @@ export function JournalEditor() {
         </div>
 
         <div className="relative mt-3 flex flex-1 overflow-hidden">
-          <div className="journal-textarea flex w-full flex-1 flex-col gap-2 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-2.5 sm:rounded-[1.75rem] sm:p-3">
+          <div ref={blocksContainerRef} className="journal-textarea flex w-full flex-1 flex-col gap-2 overflow-y-auto rounded-2xl border border-sand-200 bg-sand-50/70 p-2.5 sm:rounded-[1.75rem] sm:p-3">
             {blocks.map((block, index) => (
               <div
                 key={`block-${index}`}

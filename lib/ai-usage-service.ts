@@ -5,9 +5,16 @@ export type AiUsageTokens = {
   outputTokens: number;
 };
 
-function currentYearMonth(date: Date = new Date()): string {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+const APP_TIMEZONE = process.env.APP_TIMEZONE || "America/Mexico_City";
+
+export function currentYearMonth(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: APP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit"
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
   return `${year}-${month}`;
 }
 

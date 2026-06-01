@@ -153,36 +153,38 @@ export function SettingsView() {
                       </span>
                     </span>
                   </div>
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-sand-50 text-xs uppercase tracking-wide text-sand-600">
-                      <tr>
-                        <th className="px-4 py-2 font-medium">Modelo</th>
-                        <th className="px-4 py-2 font-medium text-right">Input</th>
-                        <th className="px-4 py-2 font-medium text-right">Output</th>
-                        <th className="px-4 py-2 font-medium text-right">Requests</th>
-                        <th className="px-4 py-2 font-medium text-right">Costo est.</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-sand-100">
-                      {rows.map((row) => (
-                        <tr key={`${row.yearMonth}-${row.model}`}>
-                          <td className="px-4 py-2 font-mono text-xs text-sand-800">{row.model}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">
-                            {formatNumber(row.inputTokens)}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums">
-                            {formatNumber(row.outputTokens)}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums">
-                            {formatNumber(row.requestCount)}
-                          </td>
-                          <td className="px-4 py-2 text-right tabular-nums">
-                            {formatUsd(row.estimatedUsd)}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[480px] text-left text-sm">
+                      <thead className="bg-sand-50 text-xs uppercase tracking-wide text-sand-600">
+                        <tr>
+                          <th className="px-4 py-2 font-medium">Modelo</th>
+                          <th className="px-4 py-2 font-medium text-right">Input</th>
+                          <th className="px-4 py-2 font-medium text-right">Output</th>
+                          <th className="px-4 py-2 font-medium text-right">Requests</th>
+                          <th className="px-4 py-2 font-medium text-right">Costo est.</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-sand-100">
+                        {rows.map((row) => (
+                          <tr key={`${row.yearMonth}-${row.model}`}>
+                            <td className="px-4 py-2 font-mono text-xs text-sand-800 whitespace-nowrap">{row.model}</td>
+                            <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                              {formatNumber(row.inputTokens)}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                              {formatNumber(row.outputTokens)}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                              {formatNumber(row.requestCount)}
+                            </td>
+                            <td className="px-4 py-2 text-right tabular-nums whitespace-nowrap">
+                              {formatUsd(row.estimatedUsd)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
             })}

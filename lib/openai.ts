@@ -289,6 +289,17 @@ type ChatAnswerInput = {
     content: string;
     entryDate: string | null;
   }>;
+  userProfile?: {
+    birthDate: string | null;
+    profession: string | null;
+    personalityType: string | null;
+    country: string | null;
+    city: string | null;
+    languages: string | null;
+    pronouns: string | null;
+    bio: string | null;
+    notes: string | null;
+  } | null;
 };
 
 function buildJournalChatMessages(input: ChatAnswerInput) {
@@ -375,6 +386,7 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
     "Cuando el usuario pregunte por hoy, ayer, mañana o esta semana, usa la fecha local del usuario proporcionada en el contexto temporal; no asumas UTC ni hora del servidor.",
     "Cuando exista un Directorio de personas, trátalo como datos confiables provistos por el usuario sobre esas personas (notas, cumpleaños, alias, tags). Úsalo libremente para responder preguntas sobre ellas, incluso si no aparecen en las entradas recuperadas. Si el usuario pregunta por un grupo descrito por un tag (por ejemplo, \"familia\", \"amigos\", \"colegas\"), responde listando las personas del directorio cuyos tags coincidan.",
     "Cuando exista una sección 'Conocimiento del usuario sobre sí mismo', trátala como hechos extraídos previamente de las entradas del diario sobre el autor. Úsala como fuente principal para preguntas introspectivas (inseguridades, miedos, logros, fortalezas, debilidades, valores, metas, sueños, hábitos, etc.).",
+    "Cuando exista una sección 'Perfil del usuario', trátala como datos confiables que el usuario proporcionó directamente sobre sí mismo (fecha de nacimiento, profesión, tipo de personalidad, lugar de residencia, idiomas, pronombres, bio, notas). Úsala libremente como contexto base sobre quién es el autor y para adaptar el tono. No la repitas de vuelta innecesariamente, solo úsala cuando sea relevante para la respuesta.",
     "Para preguntas introspectivas no te limites a repetir los insights guardados: identifica patrones, posibles raíces o creencias subyacentes (por ejemplo, comparación social, miedo al rechazo, baja autoestima, perfeccionismo, necesidad de validación), conecta insights relacionados entre sí y, cuando ayude, ofrece una hipótesis breve sobre qué podría estar detrás. Mantén un tono cálido, honesto y directo, sin diagnosticar ni moralizar. Cita las fechas como evidencia cuando refuerce el punto, pero el foco debe ser la reflexión, no el listado.",
     "Estructura sugerida para respuestas introspectivas: (1) una o dos frases que nombren el patrón o tema central, (2) ejemplos concretos del diario que lo respaldan con su fecha, (3) una hipótesis breve sobre lo que podría estar debajo, (4) opcionalmente una pregunta abierta que invite a profundizar. Evita preguntas genéricas tipo '¿quieres trabajar en tu confianza?'.",
     "Si el usuario hace una pregunta sobre su vida, trabajo, proyectos, personas o cualquier cosa que esté o pueda estar en el diario, usa únicamente el contexto del diario proporcionado y menciona fechas cuando estén disponibles. No inventes detalles. Si el contexto es insuficiente, dilo claramente.",
@@ -403,10 +415,27 @@ function buildJournalChatMessages(input: ChatAnswerInput) {
 
   const hasInsights = insightsByCategory.size > 0;
 
+  const profileLines: string[] = [];
+  const profile = input.userProfile ?? null;
+  if (profile) {
+    if (profile.birthDate) profileLines.push(`- Fecha de nacimiento: ${profile.birthDate}`);
+    if (profile.profession) profileLines.push(`- Profesión: ${profile.profession}`);
+    if (profile.personalityType)
+      profileLines.push(`- Tipo de personalidad: ${profile.personalityType}`);
+    const place = [profile.city, profile.country].filter(Boolean).join(", ");
+    if (place) profileLines.push(`- Lugar de residencia: ${place}`);
+    if (profile.languages) profileLines.push(`- Idiomas: ${profile.languages}`);
+    if (profile.pronouns) profileLines.push(`- Pronombres: ${profile.pronouns}`);
+    if (profile.bio) profileLines.push(`- Bio: ${profile.bio}`);
+    if (profile.notes) profileLines.push(`- Notas personales: ${profile.notes}`);
+  }
+  const profileSection =
+    profileLines.length > 0 ? `Perfil del usuario:\n${profileLines.join("\n")}\n\n` : "";
+
   const userContent =
     hasContext || hasInsights
-      ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}${insightsSection}Pregunta:\n${trimmedMessage}${hasContext ? `\n\nContexto del diario:\n${contextText}` : ""}`
-      : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${directorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
+      ? `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${profileSection}${directorySection}${insightsSection}Pregunta:\n${trimmedMessage}${hasContext ? `\n\nContexto del diario:\n${contextText}` : ""}`
+      : `${browserTimeContext ? `Contexto temporal:\n${browserTimeContext}\n\n` : ""}${profileSection}${directorySection}Pregunta:\n${trimmedMessage}\n\n(No se recuperó contexto relevante del diario para esta pregunta.)`;
 
   // Cap history to the last 6 turns (3 user/assistant pairs) to keep tokens low.
   const HISTORY_TURN_LIMIT = 6;

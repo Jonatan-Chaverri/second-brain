@@ -146,6 +146,45 @@ export type ChatContextUserInsight = {
   entryDate: string | null;
 };
 
+export type ChatContextUserProfile = {
+  birthDate: string | null;
+  profession: string | null;
+  personalityType: string | null;
+  country: string | null;
+  city: string | null;
+  languages: string | null;
+  pronouns: string | null;
+  bio: string | null;
+  notes: string | null;
+};
+
+async function fetchUserProfile(userId: string): Promise<ChatContextUserProfile | null> {
+  const profile = await prisma.userProfile.findUnique({ where: { userId } });
+  if (!profile) return null;
+  const hasAny =
+    profile.birthDate ||
+    profile.profession ||
+    profile.personalityType ||
+    profile.country ||
+    profile.city ||
+    profile.languages ||
+    profile.pronouns ||
+    profile.bio ||
+    profile.notes;
+  if (!hasAny) return null;
+  return {
+    birthDate: profile.birthDate ? profile.birthDate.toISOString().slice(0, 10) : null,
+    profession: profile.profession,
+    personalityType: profile.personalityType,
+    country: profile.country,
+    city: profile.city,
+    languages: profile.languages,
+    pronouns: profile.pronouns,
+    bio: profile.bio,
+    notes: profile.notes
+  };
+}
+
 const INSIGHT_CATEGORY_KEYWORDS: Record<UserInsightCategory, string[]> = {
   insecurity: [
     "inseguridad",
@@ -311,12 +350,18 @@ export async function buildChatContext(input: {
 
   const matchedInsightCategories = detectInsightCategoriesInMessage(input.message);
   const userInsights = await fetchUserInsights(input.userId, matchedInsightCategories);
+  const userProfile = await fetchUserProfile(input.userId);
 
   return {
     entries,
     peopleDirectory,
     userInsights,
-    hasEnoughContext: entries.length > 0 || peopleDirectory.length > 0 || userInsights.length > 0
+    userProfile,
+    hasEnoughContext:
+      entries.length > 0 ||
+      peopleDirectory.length > 0 ||
+      userInsights.length > 0 ||
+      userProfile !== null
   };
 }
 

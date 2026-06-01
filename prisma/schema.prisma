@@ -47,6 +47,7 @@ model User {
   tags      Tag[]
   insights  UserInsight[]
   aiUsages  AiUsage[]
+  profile   UserProfile?
 
   @@map("users")
 }
@@ -209,4 +210,23 @@ model AiUsage {
   @@unique([userId, yearMonth, model])
   @@index([userId, yearMonth])
   @@map("ai_usages")
+}
+
+model UserProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  birthDate       DateTime? @db.Date
+  profession      String?
+  personalityType String?
+  country         String?
+  city            String?
+  languages       String?
+  pronouns        String?
+  bio             String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
 }

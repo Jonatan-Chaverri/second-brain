@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { BlinkSprite } from "@/components/BlinkSprite";
 
 type NavLink = {
-  href: "/journal" | "/chat" | "/people" | "/aliases" | "/settings";
+  href: "/journal" | "/chat" | "/people" | "/aliases" | "/me" | "/settings";
   label: string;
   icon: ReactNode;
 };
@@ -74,6 +74,16 @@ const navLinks: NavLink[] = [
         <path d="M4 12h8" />
         <path d="M4 17h12" />
         <path d="m18 9 3 3-3 3" />
+      </Icon>
+    )
+  },
+  {
+    href: "/me",
+    label: "Me",
+    icon: (
+      <Icon>
+        <circle cx="12" cy="8" r="3.4" />
+        <path d="M4.5 20c0-3.6 3.4-6.5 7.5-6.5s7.5 2.9 7.5 6.5" />
       </Icon>
     )
   },
@@ -146,7 +156,7 @@ export function TopNav() {
   return (
     <header ref={headerRef} className="sticky top-0 z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
       <div className="relative mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
-        <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:hidden">
+        <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 nav:hidden">
           <BlinkSprite size={40} />
         </span>
         <button
@@ -154,7 +164,7 @@ export function TopNav() {
           aria-label="Toggle navigation"
           aria-expanded={isOpen}
           onClick={() => setIsOpen((current) => !current)}
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-sand-200 text-sand-700 hover:border-sand-300 hover:text-sand-900 sm:hidden"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-sand-200 text-sand-700 hover:border-sand-300 hover:text-sand-900 nav:hidden"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -182,7 +192,7 @@ export function TopNav() {
           </svg>
         </button>
 
-        <nav className="hidden items-center gap-3 text-sm font-medium text-sand-700 sm:flex">
+        <nav className="hidden items-center gap-3 text-sm font-medium text-sand-700 nav:flex">
           {navLinks.map((link) => (
             <Link key={link.href} href={link.href} className={getLinkClass(pathname, link.href)}>
               {link.icon}
@@ -192,7 +202,7 @@ export function TopNav() {
         </nav>
 
         <div className="flex items-center gap-3">
-          <span className="hidden sm:inline-flex">
+          <span className="hidden nav:inline-flex">
             <BlinkSprite size={40} />
           </span>
           <form action="/api/logout" method="post">
@@ -208,7 +218,7 @@ export function TopNav() {
 
       {mounted && isOpen
         ? createPortal(
-            <div className="sm:hidden">
+            <div className="nav:hidden">
               <div
                 className="fixed inset-0 z-[60] bg-sand-900/40 backdrop-blur-sm"
                 aria-hidden

@@ -8,6 +8,20 @@ Second Brain is a private, self-hosted AI journal. You write one entry per day, 
 
 The project is intended to be open source and reusable by anyone. It does not hardcode personal aliases or diary-specific knowledge in source code.
 
+## Screenshots
+
+<p align="center">
+  <img src="docs/app1.png" alt="Daily journal entry composed of bullet blocks" width="260" />
+  &nbsp;
+  <img src="docs/app3.png" alt="Chat answering a question using your own journal context" width="260" />
+  &nbsp;
+  <img src="docs/app2.png" alt="Mobile navigation grouped into Principal, AI knowledge and Configuration sections" width="260" />
+</p>
+
+<p align="center">
+  <em>Write your day · Ask your second brain · Navigate your knowledge</em>
+</p>
+
 ## Current Status
 
 The current MVP is working and includes:

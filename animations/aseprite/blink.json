@@ -1,0 +1,50 @@
+{ "frames": {
+   "blink.json": {
+    "frame": { "x": 0, "y": 0, "w": 308, "h": 256 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 308, "h": 256 },
+    "sourceSize": { "w": 308, "h": 256 },
+    "duration": 1800
+   },
+   "blink.json": {
+    "frame": { "x": 308, "y": 0, "w": 308, "h": 256 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 308, "h": 256 },
+    "sourceSize": { "w": 308, "h": 256 },
+    "duration": 200
+   },
+   "blink.json": {
+    "frame": { "x": 616, "y": 0, "w": 308, "h": 256 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 308, "h": 256 },
+    "sourceSize": { "w": 308, "h": 256 },
+    "duration": 1400
+   },
+   "blink.json": {
+    "frame": { "x": 924, "y": 0, "w": 308, "h": 256 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 308, "h": 256 },
+    "sourceSize": { "w": 308, "h": 256 },
+    "duration": 200
+   }
+ },
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.7-arm64",
+  "image": "blink-sheet.png",
+  "format": "RGBA8888",
+  "size": { "w": 1232, "h": 256 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Sprite Sheet", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}

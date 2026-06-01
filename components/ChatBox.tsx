@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { ThinkingSprite } from "@/components/ThinkingSprite";
+
 type ChatMessage = {
   role: "user" | "assistant";
   content: string;
@@ -70,7 +72,11 @@ export function ChatBox() {
     const userMessage: ChatMessage = { role: "user", content: trimmed };
     const userMessageIndex = messages.length;
     setPinnedUserIndex(userMessageIndex);
-    setMessages((current) => [...current, userMessage]);
+    setMessages((current) => [
+      ...current,
+      userMessage,
+      { role: "assistant", content: "" }
+    ]);
     setMessage("");
     setStatus("loading");
     setErrorMessage(null);
@@ -104,14 +110,15 @@ export function ChatBox() {
       const decoder = new TextDecoder();
       let assistantContent = "";
 
-      setMessages((current) => [
-        ...current,
-        {
-          role: "assistant",
-          content: "",
-          entriesUsed
-        }
-      ]);
+      setMessages((current) => {
+        if (current.length === 0) return current;
+        const next = [...current];
+        const lastIndex = next.length - 1;
+        const last = next[lastIndex];
+        if (last.role !== "assistant") return next;
+        next[lastIndex] = { ...last, entriesUsed };
+        return next;
+      });
 
       while (true) {
         const { done, value } = await reader.read();
@@ -208,29 +215,46 @@ export function ChatBox() {
                 className={
                   entry.role === "user"
                     ? "rounded-3xl bg-sand-900 px-4 py-3 text-sm text-white"
-                    : "rounded-3xl bg-white px-4 py-3 text-sm text-sand-800 shadow-sm"
+                    : "relative rounded-3xl bg-white px-4 py-3 text-sm text-sand-800 shadow-sm after:absolute after:-bottom-2 after:left-7 after:h-4 after:w-4 after:rotate-45 after:bg-white after:shadow-sm after:content-['']"
                 }
               >
-                {entry.content}
-                {entry.role === "assistant" && isStreaming && index === messages.length - 1 ? (
+                {entry.content || (entry.role === "assistant" ? (
+                  <span className="italic text-sand-400">Thinking…</span>
+                ) : null)}
+                {entry.role === "assistant" && isStreaming && index === messages.length - 1 && entry.content ? (
                   <span
                     aria-hidden="true"
                     className="ml-1 inline-block h-4 w-0.5 animate-pulse rounded-full bg-indigo-400 align-[-2px]"
                   />
                 ) : null}
               </div>
-              {entry.role === "assistant" && entry.entriesUsed !== undefined ? (
-                <span
-                  className={
-                    entry.entriesUsed > 0
-                      ? "rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-300 ring-1 ring-inset ring-indigo-400/30"
-                      : "rounded-full bg-sand-200/40 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sand-500 ring-1 ring-inset ring-sand-300/40"
-                  }
-                >
-                  {entry.entriesUsed > 0
-                    ? `Basado en ${entry.entriesUsed} ${entry.entriesUsed === 1 ? "entrada" : "entradas"}`
-                    : "Sin contexto del diario"}
-                </span>
+              {entry.role === "assistant" ? (
+                <div className="mt-3 ml-2 flex items-center gap-2">
+                  {entry.content.length === 0 ? (
+                    <ThinkingSprite size={24} />
+                  ) : (
+                    <img
+                      src="/animations/blink1.png"
+                      alt=""
+                      aria-hidden
+                      className="h-6 w-auto select-none"
+                      style={{ imageRendering: "pixelated" }}
+                    />
+                  )}
+                  {entry.entriesUsed !== undefined ? (
+                    <span
+                      className={
+                        entry.entriesUsed > 0
+                          ? "rounded-full bg-indigo-500/10 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-indigo-300 ring-1 ring-inset ring-indigo-400/30"
+                          : "rounded-full bg-sand-200/40 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-sand-500 ring-1 ring-inset ring-sand-300/40"
+                      }
+                    >
+                      {entry.entriesUsed > 0
+                        ? `Basado en ${entry.entriesUsed} ${entry.entriesUsed === 1 ? "entrada" : "entradas"}`
+                        : "Sin contexto del diario"}
+                    </span>
+                  ) : null}
+                </div>
               ) : null}
             </div>
           ))}

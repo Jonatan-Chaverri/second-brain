@@ -1,0 +1,50 @@
+{ "frames": {
+   "thinking.json": {
+    "frame": { "x": 0, "y": 0, "w": 358, "h": 389 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 358, "h": 389 },
+    "sourceSize": { "w": 358, "h": 389 },
+    "duration": 300
+   },
+   "thinking.json": {
+    "frame": { "x": 358, "y": 0, "w": 358, "h": 389 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 358, "h": 389 },
+    "sourceSize": { "w": 358, "h": 389 },
+    "duration": 300
+   },
+   "thinking.json": {
+    "frame": { "x": 716, "y": 0, "w": 358, "h": 389 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 358, "h": 389 },
+    "sourceSize": { "w": 358, "h": 389 },
+    "duration": 300
+   },
+   "thinking.json": {
+    "frame": { "x": 1074, "y": 0, "w": 358, "h": 389 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 358, "h": 389 },
+    "sourceSize": { "w": 358, "h": 389 },
+    "duration": 300
+   }
+ },
+ "meta": {
+  "app": "https://www.aseprite.org/",
+  "version": "1.3.7-arm64",
+  "image": "full_animation1-sheet.png",
+  "format": "RGBA8888",
+  "size": { "w": 1432, "h": 389 },
+  "scale": "1",
+  "frameTags": [
+  ],
+  "layers": [
+   { "name": "Layer", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}

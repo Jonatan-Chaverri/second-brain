@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
+import { BlinkSprite } from "@/components/BlinkSprite";
+
 type NavLink = {
   href: "/journal" | "/chat" | "/people" | "/aliases" | "/settings";
   label: string;
@@ -143,7 +145,10 @@ export function TopNav() {
 
   return (
     <header ref={headerRef} className="sticky top-0 z-50 border-b border-sand-200/80 bg-white/80 backdrop-blur">
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+      <div className="relative mx-auto flex max-w-5xl items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <span className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:hidden">
+          <BlinkSprite size={40} />
+        </span>
         <button
           type="button"
           aria-label="Toggle navigation"
@@ -186,14 +191,19 @@ export function TopNav() {
           ))}
         </nav>
 
-        <form action="/api/logout" method="post">
-          <button
-            type="submit"
-            className="rounded-full border border-sand-300 px-4 py-2 text-sm font-medium text-sand-700 hover:border-sand-400 hover:text-sand-900"
-          >
-            Logout
-          </button>
-        </form>
+        <div className="flex items-center gap-3">
+          <span className="hidden sm:inline-flex">
+            <BlinkSprite size={40} />
+          </span>
+          <form action="/api/logout" method="post">
+            <button
+              type="submit"
+              className="rounded-full border border-sand-300 px-4 py-2 text-sm font-medium text-sand-700 hover:border-sand-400 hover:text-sand-900"
+            >
+              Logout
+            </button>
+          </form>
+        </div>
       </div>
 
       {mounted && isOpen

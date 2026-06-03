@@ -70,9 +70,12 @@ export type JournalAnalysis = {
 };
 
 export class OpenAiProcessingError extends Error {
-  constructor(message: string) {
+  readonly context?: Record<string, unknown>;
+
+  constructor(message: string, context?: Record<string, unknown>) {
     super(message);
     this.name = "OpenAiProcessingError";
+    this.context = context;
   }
 }
 
@@ -94,7 +97,7 @@ function includesNormalizedPhrase(haystack: string, needle: string) {
 async function callOpenAi<T>(
   path: string,
   body: Record<string, unknown>,
-  tracking?: { userId?: string; model: string }
+  tracking?: { userId?: string; model: string; operation?: string }
 ) {
   const response = await fetch(`https://api.openai.com/v1/${path}`, {
     method: "POST",
@@ -107,7 +110,13 @@ async function callOpenAi<T>(
 
   if (!response.ok) {
     const details = await response.text();
-    throw new OpenAiProcessingError(`OpenAI request failed: ${response.status} ${details}`);
+    throw new OpenAiProcessingError(`OpenAI request failed: ${response.status}`, {
+      operation: tracking?.operation ?? path,
+      path,
+      model: tracking?.model,
+      status: response.status,
+      responseBodyPreview: details.slice(0, 1000)
+    });
   }
 
   const json = (await response.json()) as T & TrackedResponseEnvelope;
@@ -178,13 +187,16 @@ async function summarizeJournalEntry(rawText: string, userId?: string) {
       }
     ]
     },
-    { userId, model: serverEnv.openAiSummaryModel }
+    { userId, model: serverEnv.openAiSummaryModel, operation: "summarize_journal_entry" }
   );
 
   const content = payload.choices?.[0]?.message?.content;
 
   if (!content) {
-    throw new OpenAiProcessingError("OpenAI summary response was empty.");
+    throw new OpenAiProcessingError("OpenAI summary response was empty.", {
+      operation: "summarize_journal_entry",
+      model: serverEnv.openAiSummaryModel
+    });
   }
 
   let parsedContent: unknown;
@@ -192,13 +204,25 @@ async function summarizeJournalEntry(rawText: string, userId?: string) {
   try {
     parsedContent = JSON.parse(content);
   } catch {
-    throw new OpenAiProcessingError("OpenAI summary response was not valid JSON.");
+    throw new OpenAiProcessingError("OpenAI summary response was not valid JSON.", {
+      operation: "summarize_journal_entry",
+      model: serverEnv.openAiSummaryModel,
+      responseContentPreview: content.slice(0, 1000)
+    });
   }
 
   const parsed = analysisSchema.safeParse(parsedContent);
 
   if (!parsed.success) {
-    throw new OpenAiProcessingError("OpenAI summary response did not match the expected schema.");
+    throw new OpenAiProcessingError("OpenAI summary response did not match the expected schema.", {
+      operation: "summarize_journal_entry",
+      model: serverEnv.openAiSummaryModel,
+      zodIssues: parsed.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message
+      })),
+      responseContentPreview: content.slice(0, 1000)
+    });
   }
 
   return {
@@ -236,13 +260,16 @@ export async function generateEmbedding(rawText: string, userId?: string) {
       model: serverEnv.openAiEmbeddingModel,
       input: rawText
     },
-    { userId, model: serverEnv.openAiEmbeddingModel }
+    { userId, model: serverEnv.openAiEmbeddingModel, operation: "journal_embedding" }
   );
 
   const embedding = payload.data?.[0]?.embedding;
 
   if (!embedding || !Array.isArray(embedding)) {
-    throw new OpenAiProcessingError("OpenAI embedding response was empty.");
+    throw new OpenAiProcessingError("OpenAI embedding response was empty.", {
+      operation: "journal_embedding",
+      model: serverEnv.openAiEmbeddingModel
+    });
   }
 
   return embedding;
@@ -716,13 +743,20 @@ export async function answerJournalQuestion(input: ChatAnswerInput) {
       temperature: 0.2,
       messages
     },
-    { userId: input.userId, model: serverEnv.openAiSummaryModel }
+    {
+      userId: input.userId,
+      model: serverEnv.openAiSummaryModel,
+      operation: "answer_journal_question"
+    }
   );
 
   const content = payload.choices?.[0]?.message?.content?.trim();
 
   if (!content) {
-    throw new OpenAiProcessingError("OpenAI chat response was empty.");
+    throw new OpenAiProcessingError("OpenAI chat response was empty.", {
+      operation: "answer_journal_question",
+      model: serverEnv.openAiSummaryModel
+    });
   }
 
   return content;

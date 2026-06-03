@@ -10,6 +10,8 @@ const saveSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  let requestMeta: { rawTextLength?: number; entryDate?: string } = {};
+
   try {
     const authUser = await requireOwnerApiUser();
     const dbUser = await syncOwnerUser(authUser.email!.toLowerCase());
@@ -19,6 +21,11 @@ export async function POST(request: Request) {
     if (!parsed.success) {
       return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
     }
+
+    requestMeta = {
+      rawTextLength: parsed.data.rawText.length,
+      entryDate: parsed.data.entryDate
+    };
 
     const result = await saveJournalEntryForUser({
       userId: dbUser.id,
@@ -39,8 +46,19 @@ export async function POST(request: Request) {
     }
 
     if (error instanceof OpenAiProcessingError) {
+      console.error("Journal save AI processing failed", {
+        error: error.message,
+        context: error.context,
+        requestMeta
+      });
+
       return NextResponse.json({ error: "AI processing failed while saving the entry." }, { status: 502 });
     }
+
+    console.error("Journal save failed", {
+      error: error instanceof Error ? error.message : "Unknown error",
+      requestMeta
+    });
 
     return NextResponse.json({ error: "Failed to save journal entry." }, { status: 500 });
   }
